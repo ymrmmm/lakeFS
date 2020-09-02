@@ -28,7 +28,7 @@ func TestCataloger_Commit(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		fileName := "/file" + strconv.Itoa(i)
 		fileAddr := "/addr" + strconv.Itoa(i)
-		if err := c.CreateEntry(ctx, repository, "master", Entry{
+		if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 			Path:            fileName,
 			Checksum:        "ff",
 			PhysicalAddress: fileAddr,
@@ -120,7 +120,7 @@ func TestCataloger_Commit_Scenario(t *testing.T) {
 		repository := testCatalogerRepo(t, ctx, c, "repository", "master")
 		var previousCommitID CommitID
 		for i := 0; i < 3; i++ {
-			if err := c.CreateEntry(ctx, repository, "master", Entry{
+			if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 				Path:            "/file1",
 				Checksum:        strings.Repeat("ff", i),
 				PhysicalAddress: "/addr" + strconv.Itoa(i+1),
@@ -158,7 +158,7 @@ func TestCataloger_Commit_Scenario(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			fileName := fmt.Sprintf("/file%d", i+1)
 			addrName := fmt.Sprintf("/addr%d", i+1)
-			if err := c.CreateEntry(ctx, repository, "master", Entry{
+			if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 				Path:            fileName,
 				Checksum:        "ff",
 				PhysicalAddress: addrName,
@@ -193,7 +193,7 @@ func TestCataloger_Commit_Scenario(t *testing.T) {
 
 	t.Run("delete on a committed file same branch", func(t *testing.T) {
 		repository := testCatalogerRepo(t, ctx, c, "repository", "master")
-		if err := c.CreateEntry(ctx, repository, "master", Entry{
+		if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 			Path:            "/file5",
 			Checksum:        "ffff",
 			PhysicalAddress: "/addr5",

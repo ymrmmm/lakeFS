@@ -171,7 +171,7 @@ func TestCataloger_ListCommits(t *testing.T) {
 		t.Fatalf("ListCommits() error = %s", err)
 	}
 
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "master-file",
 		Checksum:        "ssss",
 		PhysicalAddress: "xxxxxxx",
@@ -197,7 +197,7 @@ func setupListCommitsByBranchData(t *testing.T, ctx context.Context, c Cataloger
 	for i := 0; i < 3; i++ {
 		fileName := fmt.Sprintf("/file%d", i)
 		fileAddr := fmt.Sprintf("/addr%d", i)
-		if err := c.CreateEntry(ctx, repository, branch, Entry{
+		if _, err := c.CreateEntry(ctx, repository, branch, Entry{
 			Path:            fileName,
 			Checksum:        strings.Repeat("ff", i),
 			PhysicalAddress: fileAddr,
@@ -242,7 +242,7 @@ func TestCataloger_ListCommits_Lineage(t *testing.T) {
 		t.Error("br_2 did not inherit commits correctly", diff)
 	}
 
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "master-file",
 		Checksum:        "ssss",
 		PhysicalAddress: "xxxxxxx",
@@ -299,7 +299,7 @@ func TestCataloger_ListCommits_LineageFromChild(t *testing.T) {
 		t.Error("br_1_2 did not inherit commits correctly", diff)
 	}
 
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "master-file",
 		Checksum:        "ssss",
 		PhysicalAddress: "xxxxxxx",
@@ -330,7 +330,7 @@ func TestCataloger_ListCommits_LineageFromChild(t *testing.T) {
 
 	testCatalogerBranch(t, ctx, c, repository, "br_2_1", "master")
 	testCatalogerBranch(t, ctx, c, repository, "br_2_2", "br_2_1")
-	if err := c.CreateEntry(ctx, repository, "br_2_2", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "br_2_2", Entry{
 		Path:            "master-file",
 		Checksum:        "zzzzz",
 		PhysicalAddress: "yyyyy",
@@ -383,7 +383,7 @@ func TestCataloger_ListCommits_LineageFromChild(t *testing.T) {
 		t.Error("master 5 first different from br_1_1 [1:6]", diff)
 	}
 	// test that a change to br_2_2 does not propagate to master
-	if err := c.CreateEntry(ctx, repository, "br_2_2", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "br_2_2", Entry{
 		Path:            "no-propagate-file",
 		Checksum:        "aaaaaaaa",
 		PhysicalAddress: "yybbbbbbyyy",

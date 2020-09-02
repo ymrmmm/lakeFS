@@ -20,7 +20,6 @@ import (
 	"github.com/treeverse/lakefs/block"
 	"github.com/treeverse/lakefs/catalog"
 	"github.com/treeverse/lakefs/db"
-	"github.com/treeverse/lakefs/dedup"
 	"github.com/treeverse/lakefs/httputil"
 	"github.com/treeverse/lakefs/logging"
 	"github.com/treeverse/lakefs/retention"
@@ -41,17 +40,16 @@ var (
 )
 
 type Handler struct {
-	meta         auth.MetadataManager
-	cataloger    catalog.Cataloger
-	blockStore   block.Adapter
-	authService  auth.Service
-	stats        stats.Collector
-	retention    retention.Service
-	migrator     db.Migrator
-	apiServer    *restapi.Server
-	handler      *http.ServeMux
-	dedupCleaner *dedup.Cleaner
-	logger       logging.Logger
+	meta        auth.MetadataManager
+	cataloger   catalog.Cataloger
+	blockStore  block.Adapter
+	authService auth.Service
+	stats       stats.Collector
+	retention   retention.Service
+	migrator    db.Migrator
+	apiServer   *restapi.Server
+	handler     *http.ServeMux
+	logger      logging.Logger
 }
 
 func NewHandler(
@@ -62,20 +60,18 @@ func NewHandler(
 	stats stats.Collector,
 	retention retention.Service,
 	migrator db.Migrator,
-	dedupCleaner *dedup.Cleaner,
 	logger logging.Logger,
 ) http.Handler {
 	logger.Info("initialized OpenAPI server")
 	s := &Handler{
-		cataloger:    cataloger,
-		blockStore:   blockStore,
-		authService:  authService,
-		meta:         meta,
-		stats:        stats,
-		retention:    retention,
-		migrator:     migrator,
-		dedupCleaner: dedupCleaner,
-		logger:       logger,
+		cataloger:   cataloger,
+		blockStore:  blockStore,
+		authService: authService,
+		meta:        meta,
+		stats:       stats,
+		retention:   retention,
+		migrator:    migrator,
+		logger:      logger,
 	}
 	s.buildAPI()
 	return s.handler
@@ -167,7 +163,7 @@ func (s *Handler) buildAPI() {
 	api.BasicAuthAuth = s.BasicAuth()
 	api.JwtTokenAuth = s.JwtTokenAuth()
 	// bind our handlers to the server
-	NewController(s.cataloger, s.authService, s.blockStore, s.stats, s.retention, s.dedupCleaner, s.meta, s.migrator, s.stats, s.logger).Configure(api)
+	NewController(s.cataloger, s.authService, s.blockStore, s.stats, s.retention, s.meta, s.migrator, s.stats, s.logger).Configure(api)
 
 	// setup host/port
 	s.apiServer = restapi.NewServer(api)

@@ -9,16 +9,16 @@ import (
 	"github.com/treeverse/lakefs/db"
 )
 
-func (c *cataloger) CreateEntry(ctx context.Context, repository, branch string, entry Entry, params CreateEntryParams) error {
+func (c *cataloger) CreateEntry(ctx context.Context, repository, branch string, entry Entry, params CreateEntryParams) (string, error) {
 	if err := Validate(ValidateFields{
 		{Name: "repository", IsValid: ValidateRepositoryName(repository)},
 		{Name: "branch", IsValid: ValidateBranchName(branch)},
 		{Name: "path", IsValid: ValidatePath(entry.Path)},
 	}); err != nil {
-		return err
+		return "", err
 	}
 
-	_, err := c.db.Transact(func(tx db.Tx) (interface{}, error) {
+	res, err := c.db.Transact(func(tx db.Tx) (interface{}, error) {
 		branchID, err := c.getBranchIDCache(tx, repository, branch)
 		if err != nil {
 			return nil, err
@@ -26,11 +26,9 @@ func (c *cataloger) CreateEntry(ctx context.Context, repository, branch string, 
 
 		// dedup if needed
 		entryAddress := entry.PhysicalAddress
-		dedupAddress, err := c.createEntryDedup(tx, params, repository, entry.PhysicalAddress)
-		if err != nil {
+		if dedupAddress, err := c.createEntryDedup(tx, params, repository, entry.PhysicalAddress); err != nil {
 			return nil, err
-		}
-		if dedupAddress != "" {
+		} else if dedupAddress != "" {
 			// write dedup address to the catalog
 			entryAddress = dedupAddress
 		}
@@ -50,10 +48,12 @@ func (c *cataloger) CreateEntry(ctx context.Context, repository, branch string, 
 			return nil, fmt.Errorf("insert entry: %w", err)
 		}
 		// return the real physical address
-		return dedupAddress, nil
+		return entryAddress, nil
 	}, c.txOpts(ctx)...)
-	// TODO(barak): return new object address
-	return err
+	if err != nil {
+		return "", err
+	}
+	return res.(string), nil
 }
 
 func (c *cataloger) createEntryDedup(tx db.Tx, params CreateEntryParams, repository string, physicalAddress string) (string, error) {

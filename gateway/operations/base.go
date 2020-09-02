@@ -12,7 +12,6 @@ import (
 	"github.com/treeverse/lakefs/auth"
 	"github.com/treeverse/lakefs/block"
 	"github.com/treeverse/lakefs/catalog"
-	"github.com/treeverse/lakefs/dedup"
 	"github.com/treeverse/lakefs/gateway/errors"
 	"github.com/treeverse/lakefs/gateway/simulator"
 	"github.com/treeverse/lakefs/httputil"
@@ -33,7 +32,6 @@ type Operation struct {
 	BlockStore     block.Adapter
 	Auth           simulator.GatewayAuthService
 	Incr           ActionIncr
-	DedupCleaner   *dedup.Cleaner
 }
 
 func (o *Operation) RequestID() string {

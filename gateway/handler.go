@@ -13,7 +13,6 @@ import (
 	"github.com/treeverse/lakefs/block"
 	"github.com/treeverse/lakefs/catalog"
 	"github.com/treeverse/lakefs/db"
-	"github.com/treeverse/lakefs/dedup"
 	gatewayerrors "github.com/treeverse/lakefs/gateway/errors"
 	"github.com/treeverse/lakefs/gateway/operations"
 	"github.com/treeverse/lakefs/gateway/path"
@@ -34,28 +33,26 @@ type handler struct {
 }
 
 type ServerContext struct {
-	ctx          context.Context
-	region       string
-	bareDomain   string
-	cataloger    catalog.Cataloger
-	blockStore   block.Adapter
-	authService  simulator.GatewayAuthService
-	stats        stats.Collector
-	dedupCleaner *dedup.Cleaner
+	ctx         context.Context
+	region      string
+	bareDomain  string
+	cataloger   catalog.Cataloger
+	blockStore  block.Adapter
+	authService simulator.GatewayAuthService
+	stats       stats.Collector
 }
 
 const operationIDNotFound = "not_found_operation"
 
 func (c *ServerContext) WithContext(ctx context.Context) *ServerContext {
 	return &ServerContext{
-		ctx:          ctx,
-		region:       c.region,
-		bareDomain:   c.bareDomain,
-		cataloger:    c.cataloger,
-		blockStore:   c.blockStore.WithContext(ctx),
-		authService:  c.authService,
-		stats:        c.stats,
-		dedupCleaner: c.dedupCleaner,
+		ctx:         ctx,
+		region:      c.region,
+		bareDomain:  c.bareDomain,
+		cataloger:   c.cataloger,
+		blockStore:  c.blockStore.WithContext(ctx),
+		authService: c.authService,
+		stats:       c.stats,
 	}
 }
 
@@ -66,17 +63,15 @@ func NewHandler(
 	authService simulator.GatewayAuthService,
 	bareDomain string,
 	stats stats.Collector,
-	dedupCleaner *dedup.Cleaner,
 ) http.Handler {
 	sc := &ServerContext{
-		ctx:          context.Background(),
-		cataloger:    cataloger,
-		region:       region,
-		bareDomain:   bareDomain,
-		blockStore:   blockStore,
-		authService:  authService,
-		stats:        stats,
-		dedupCleaner: dedupCleaner,
+		ctx:         context.Background(),
+		cataloger:   cataloger,
+		region:      region,
+		bareDomain:  bareDomain,
+		blockStore:  blockStore,
+		authService: authService,
+		stats:       stats,
 	}
 
 	// setup routes
@@ -124,7 +119,6 @@ func authenticateOperation(s *ServerContext, writer http.ResponseWriter, request
 				Debug("performing S3 action")
 			s.stats.CollectEvent("s3_gateway", action)
 		},
-		DedupCleaner: s.dedupCleaner,
 	}
 
 	// authenticate
@@ -219,7 +213,6 @@ func operation(sc *ServerContext, writer http.ResponseWriter, request *http.Requ
 				Debug("performing S3 action")
 			sc.stats.CollectEvent("s3_gateway", action)
 		},
-		DedupCleaner: sc.dedupCleaner,
 	}
 }
 

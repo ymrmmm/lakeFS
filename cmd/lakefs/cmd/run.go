@@ -21,7 +21,6 @@ import (
 	"github.com/treeverse/lakefs/catalog"
 	"github.com/treeverse/lakefs/config"
 	"github.com/treeverse/lakefs/db"
-	"github.com/treeverse/lakefs/dedup"
 	"github.com/treeverse/lakefs/gateway"
 	"github.com/treeverse/lakefs/gateway/simulator"
 	"github.com/treeverse/lakefs/httputil"
@@ -85,11 +84,8 @@ var runCmd = &cobra.Command{
 		processID, bufferedCollectorArgs := cfg.GetStatsBufferedCollectorArgs()
 		stats := stats.NewBufferedCollector(installationID, processID, bufferedCollectorArgs...)
 
-		dedupCleaner := dedup.NewCleaner(blockStore, cataloger.DedupReportChannel())
 		defer func() {
-			// order is important - close cataloger channel before dedup
 			_ = cataloger.Close()
-			_ = dedupCleaner.Close()
 		}()
 
 		// start API server
@@ -105,7 +101,6 @@ var runCmd = &cobra.Command{
 			stats,
 			retention,
 			migrator,
-			dedupCleaner,
 			logger.WithField("service", "api_gateway"),
 		)
 
@@ -117,7 +112,6 @@ var runCmd = &cobra.Command{
 			authService,
 			cfg.GetS3GatewayDomainName(),
 			stats,
-			dedupCleaner,
 		)
 
 		ctx, cancelFn := context.WithCancel(context.Background())

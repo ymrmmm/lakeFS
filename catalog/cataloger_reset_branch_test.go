@@ -24,7 +24,7 @@ func TestCataloger_ResetBranch_ChangesOnBranch(t *testing.T) {
 
 	// commit data
 	for i := 0; i < 3; i++ {
-		if err := c.CreateEntry(ctx, repository, "master", Entry{
+		if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 			Path:            "/file" + strconv.Itoa(i),
 			Checksum:        strings.Repeat("01", i+1),
 			PhysicalAddress: "/addr" + strconv.Itoa(i),
@@ -43,7 +43,7 @@ func TestCataloger_ResetBranch_ChangesOnBranch(t *testing.T) {
 		t.Fatal("delete for ResetBranch:", err)
 	}
 	for i := 3; i < 6; i++ {
-		if err := c.CreateEntry(ctx, repository, "master", Entry{
+		if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 			Path:            "/file" + strconv.Itoa(i),
 			Checksum:        strings.Repeat("01", i+1),
 			PhysicalAddress: "/addr" + strconv.Itoa(i),
@@ -74,7 +74,7 @@ func TestCataloger_ResetBranch_ChangesOnParent(t *testing.T) {
 
 	// commit data
 	for i := 0; i < 3; i++ {
-		if err := c.CreateEntry(ctx, repository, "master", Entry{
+		if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 			Path:            "/file" + strconv.Itoa(i),
 			Checksum:        strings.Repeat("01", i+1),
 			PhysicalAddress: "/addr" + strconv.Itoa(i),
@@ -98,7 +98,7 @@ func TestCataloger_ResetBranch_ChangesOnParent(t *testing.T) {
 		t.Fatal("delete for ResetBranch:", err)
 	}
 	for i := 3; i < 6; i++ {
-		if err := c.CreateEntry(ctx, repository, "b1", Entry{
+		if _, err := c.CreateEntry(ctx, repository, "b1", Entry{
 			Path:            "/file" + strconv.Itoa(i),
 			Checksum:        strings.Repeat("01", i+1),
 			PhysicalAddress: "/addr" + strconv.Itoa(i),

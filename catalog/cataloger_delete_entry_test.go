@@ -22,7 +22,7 @@ func TestCataloger_DeleteEntry(t *testing.T) {
 	})
 
 	t.Run("delete uncommitted", func(t *testing.T) {
-		if err := c.CreateEntry(ctx, repository, "master", Entry{
+		if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 			Path:            "/file2",
 			Checksum:        "ff",
 			PhysicalAddress: "/addr2",
@@ -47,7 +47,7 @@ func TestCataloger_DeleteEntry(t *testing.T) {
 	})
 
 	t.Run("delete committed on branch", func(t *testing.T) {
-		if err := c.CreateEntry(ctx, repository, "master", Entry{
+		if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 			Path:            "/file3",
 			Checksum:        "ffff",
 			PhysicalAddress: "/addr3",
@@ -69,7 +69,7 @@ func TestCataloger_DeleteEntry(t *testing.T) {
 	})
 
 	t.Run("delete file committed on parent", func(t *testing.T) {
-		if err := c.CreateEntry(ctx, repository, "master", Entry{
+		if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 			Path:            "/file4",
 			Checksum:        "ffff",
 			PhysicalAddress: "/addr4",

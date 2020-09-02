@@ -31,7 +31,6 @@ import (
 	"github.com/treeverse/lakefs/block"
 	"github.com/treeverse/lakefs/catalog"
 	"github.com/treeverse/lakefs/db"
-	"github.com/treeverse/lakefs/dedup"
 	"github.com/treeverse/lakefs/httputil"
 	"github.com/treeverse/lakefs/logging"
 	"github.com/treeverse/lakefs/onboard"
@@ -58,7 +57,6 @@ type Dependencies struct {
 	BlockAdapter block.Adapter
 	Stats        stats.Collector
 	Retention    retention.Service
-	Dedup        *dedup.Cleaner
 	Meta         auth.MetadataManager
 	Migrator     db.Migrator
 	Collector    stats.Collector
@@ -73,7 +71,6 @@ func (d *Dependencies) WithContext(ctx context.Context) *Dependencies {
 		BlockAdapter: d.BlockAdapter.WithContext(ctx),
 		Stats:        d.Stats,
 		Retention:    d.Retention,
-		Dedup:        d.Dedup,
 		Meta:         d.Meta,
 		Migrator:     d.Migrator,
 		Collector:    d.Collector,
@@ -94,7 +91,7 @@ type Controller struct {
 }
 
 func NewController(cataloger catalog.Cataloger, auth auth.Service, blockAdapter block.Adapter, stats stats.Collector, retention retention.Service,
-	dedupCleaner *dedup.Cleaner, meta auth.MetadataManager, migrator db.Migrator, collector stats.Collector, logger logging.Logger) *Controller {
+	meta auth.MetadataManager, migrator db.Migrator, collector stats.Collector, logger logging.Logger) *Controller {
 	c := &Controller{
 		deps: &Dependencies{
 			ctx:          context.Background(),
@@ -103,7 +100,6 @@ func NewController(cataloger catalog.Cataloger, auth auth.Service, blockAdapter 
 			BlockAdapter: blockAdapter,
 			Stats:        stats,
 			Retention:    retention,
-			Dedup:        dedupCleaner,
 			Meta:         meta,
 			Migrator:     migrator,
 			Collector:    collector,
@@ -1183,7 +1179,7 @@ func (c *Controller) ObjectsUploadObjectHandler() objects.UploadObjectHandler {
 			Size:            blob.Size,
 			Checksum:        blob.Checksum,
 		}
-		err = cataloger.CreateEntry(c.Context(), repo.Name, params.Branch, entry,
+		address, err := cataloger.CreateEntry(c.Context(), repo.Name, params.Branch, entry,
 			catalog.CreateEntryParams{
 				Dedup: catalog.DedupParams{
 					ID:               blob.DedupID,
@@ -1195,6 +1191,16 @@ func (c *Controller) ObjectsUploadObjectHandler() objects.UploadObjectHandler {
 		}
 		if err != nil {
 			return objects.NewUploadObjectDefault(http.StatusInternalServerError).WithPayload(responseErrorFrom(err))
+		}
+		// remove dup if needed
+		if address != entry.PhysicalAddress {
+			obj := block.ObjectPointer{
+				StorageNamespace: repo.StorageNamespace,
+				Identifier:       entry.PhysicalAddress,
+			}
+			if err := deps.BlockAdapter.Remove(obj); err != nil {
+				deps.logger.WithError(err).WithField("identifier", entry.PhysicalAddress).Warn("failed to delete dup entry")
+			}
 		}
 		return objects.NewUploadObjectCreated().WithPayload(&models.ObjectStats{
 			Checksum:  blob.Checksum,

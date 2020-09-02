@@ -18,11 +18,6 @@ const (
 
 	DefaultPathDelimiter = "/"
 
-	dedupBatchSize         = 10
-	dedupBatchTimeout      = 50 * time.Millisecond
-	dedupChannelSize       = 5000
-	dedupReportChannelSize = 5000
-
 	defaultCatalogerCacheSize   = 1024
 	defaultCatalogerCacheExpiry = 20 * time.Second
 	defaultCatalogerCacheJitter = 5 * time.Second
@@ -99,7 +94,7 @@ type EntryCataloger interface {
 	// GetEntry returns the current entry for path in repository branch reference.  Returns
 	// the entry with ExpiredError if it has expired from underlying storage.
 	GetEntry(ctx context.Context, repository, reference string, path string, params GetEntryParams) (*Entry, error)
-	CreateEntry(ctx context.Context, repository, branch string, entry Entry, params CreateEntryParams) error
+	CreateEntry(ctx context.Context, repository, branch string, entry Entry, params CreateEntryParams) (string, error)
 	CreateEntries(ctx context.Context, repository, branch string, entries []Entry) error
 	DeleteEntry(ctx context.Context, repository, branch string, path string) error
 	ListEntries(ctx context.Context, repository, reference string, prefix, after string, delimiter string, limit int) ([]*Entry, bool, error)
@@ -124,8 +119,6 @@ type EntryCataloger interface {
 	// expired objects.  It also removes the "deleting" mark from those objects that have an
 	// entry _not_ marked as expiring and therefore were not on the returned rows.
 	DeleteOrUnmarkObjectsForDeletion(ctx context.Context, repositoryName string) (StringRows, error)
-
-	DedupReportChannel() chan *DedupReport
 }
 
 type MultipartUpdateCataloger interface {
@@ -166,14 +159,6 @@ type Cataloger interface {
 	io.Closer
 }
 
-type dedupRequest struct {
-	Repository       string
-	StorageNamespace string
-	DedupID          string
-	Entry            *Entry
-	EntryCTID        string
-}
-
 type CacheConfig struct {
 	Enabled bool
 	Size    int
@@ -189,9 +174,6 @@ type cataloger struct {
 	wg                   sync.WaitGroup
 	cacheConfig          *CacheConfig
 	cache                Cache
-	dedupCh              chan *dedupRequest
-	dedupReportEnabled   bool
-	dedupReportCh        chan *DedupReport
 	readEntryRequestChan chan *readRequest
 	batchParams          params.BatchRead
 }
@@ -217,12 +199,6 @@ func WithCacheConfig(config *CacheConfig) CatalogerOption {
 	}
 }
 
-func WithDedupReportChannel(b bool) CatalogerOption {
-	return func(c *cataloger) {
-		c.dedupReportEnabled = b
-	}
-}
-
 func WithBatchReadParams(p params.BatchRead) CatalogerOption {
 	return func(c *cataloger) {
 		if p.ScanTimeout != 0 {
@@ -245,12 +221,10 @@ func WithBatchReadParams(p params.BatchRead) CatalogerOption {
 
 func NewCataloger(db db.Database, options ...CatalogerOption) Cataloger {
 	c := &cataloger{
-		clock:              clock.New(),
-		log:                logging.Default().WithField("service_name", "cataloger"),
-		db:                 db,
-		cacheConfig:        defaultCatalogerCacheConfig,
-		dedupCh:            make(chan *dedupRequest, dedupChannelSize),
-		dedupReportEnabled: true,
+		clock:       clock.New(),
+		log:         logging.Default().WithField("service_name", "cataloger"),
+		db:          db,
+		cacheConfig: defaultCatalogerCacheConfig,
 		batchParams: params.BatchRead{
 			ReadEntryMaxWait:  defaultBatchReadEntryMaxWait,
 			ScanTimeout:       defaultBatchScanTimeout,
@@ -267,10 +241,6 @@ func NewCataloger(db db.Database, options ...CatalogerOption) Cataloger {
 	} else {
 		c.cache = &DummyCache{}
 	}
-	if c.dedupReportEnabled {
-		c.dedupReportCh = make(chan *DedupReport, dedupReportChannelSize)
-	}
-	c.processDedupBatches()
 	c.startReadOrchestrator()
 	return c
 }
@@ -290,119 +260,5 @@ func (c *cataloger) txOpts(ctx context.Context, opts ...db.TxOpt) []db.TxOpt {
 }
 
 func (c *cataloger) Close() error {
-	if c != nil {
-		close(c.dedupCh)
-		close(c.readEntryRequestChan)
-		c.wg.Wait()
-		close(c.dedupReportCh)
-	}
 	return nil
-}
-
-func (c *cataloger) DedupReportChannel() chan *DedupReport {
-	return c.dedupReportCh
-}
-
-func (c *cataloger) processDedupBatches() {
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		batch := make([]*dedupRequest, 0, dedupBatchSize)
-		timer := time.NewTimer(dedupBatchTimeout)
-		for {
-			processBatch := false
-			select {
-			case req, ok := <-c.dedupCh:
-				if !ok {
-					return
-				}
-				batch = append(batch, req)
-				l := len(batch)
-				if l == 1 {
-					timer.Reset(dedupBatchTimeout)
-				}
-				if l == dedupBatchSize {
-					processBatch = true
-				}
-			case <-timer.C:
-				if len(batch) > 0 {
-					processBatch = true
-				}
-			}
-			if processBatch {
-				c.dedupBatch(batch)
-				batch = batch[:0]
-			}
-		}
-	}()
-}
-
-func (c *cataloger) dedupBatch(batch []*dedupRequest) {
-	ctx := context.Background()
-	dedupBatchSizeHistogram.Observe(float64(len(batch)))
-	res, err := c.db.Transact(func(tx db.Tx) (interface{}, error) {
-		addresses := make([]string, len(batch))
-		for i, r := range batch {
-			repoID, err := c.getRepositoryIDCache(tx, r.Repository)
-			if err != nil {
-				return nil, err
-			}
-
-			// add dedup record
-			res, err := tx.Exec(`INSERT INTO catalog_object_dedup (repository_id, dedup_id, physical_address) values ($1, decode($2,'hex'), $3)
-				ON CONFLICT DO NOTHING`,
-				repoID, r.DedupID, r.Entry.PhysicalAddress)
-			if err != nil {
-				return nil, err
-			}
-			if rowsAffected, err := res.RowsAffected(); err != nil {
-				return nil, err
-			} else if rowsAffected == 1 {
-				// new address was added - continue
-				continue
-			}
-
-			// fill the address into the right location
-			err = tx.Get(&addresses[i], `SELECT physical_address FROM catalog_object_dedup WHERE repository_id=$1 AND dedup_id=decode($2,'hex')`,
-				repoID, r.DedupID)
-			if err != nil {
-				return nil, err
-			}
-
-			// update the entry with new address physical address
-			_, err = tx.Exec(`UPDATE catalog_entries SET physical_address=$2 WHERE ctid=$1 AND physical_address=$3`,
-				r.EntryCTID, addresses[i], r.Entry.PhysicalAddress)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return addresses, nil
-	}, c.txOpts(ctx)...)
-	if err != nil {
-		c.log.WithError(err).Errorf("Dedup batch failed (%d requests)", len(batch))
-		return
-	}
-
-	// call callbacks for each entry we updated
-	if c.dedupReportEnabled {
-		addresses := res.([]string)
-		for i, r := range batch {
-			if addresses[i] == "" {
-				continue
-			}
-			report := &DedupReport{
-				Timestamp:          time.Now(),
-				Repository:         r.Repository,
-				StorageNamespace:   r.StorageNamespace,
-				Entry:              r.Entry,
-				DedupID:            r.DedupID,
-				NewPhysicalAddress: addresses[i],
-			}
-			select {
-			case c.dedupReportCh <- report:
-			default:
-				dedupRemoveObjectDroppedCounter.Inc()
-			}
-		}
-	}
 }

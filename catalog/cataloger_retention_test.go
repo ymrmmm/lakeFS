@@ -111,7 +111,7 @@ func TestCataloger_ScanExpired(t *testing.T) {
 	testCatalogerBranch(t, ctx, c, repository, "slow", "master")
 	testCatalogerBranch(t, ctx, c, repository, "fast", "slow")
 
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "0/historical",
 		PhysicalAddress: "/master/history/1",
 		CreationDate:    time.Now().Add(-20 * time.Hour),
@@ -119,7 +119,7 @@ func TestCataloger_ScanExpired(t *testing.T) {
 	}, CreateEntryParams{}); err != nil {
 		t.Fatal("Failed to create 0/historical on master", err)
 	}
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "0/committed",
 		PhysicalAddress: "/committed/1",
 		CreationDate:    time.Now().Add(-19 * time.Hour),
@@ -132,7 +132,7 @@ func TestCataloger_ScanExpired(t *testing.T) {
 		t.Fatal("Failed to commit first commit to master", err)
 	}
 
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "0/historical",
 		PhysicalAddress: "/master/history/2",
 		CreationDate:    time.Now().Add(-19 * time.Hour),
@@ -144,7 +144,7 @@ func TestCataloger_ScanExpired(t *testing.T) {
 		t.Fatal("Failed to commit second commit to master", err)
 	}
 
-	if err := c.CreateEntry(ctx, repository, "slow", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "slow", Entry{
 		Path:            "0/committed",
 		PhysicalAddress: "/committed/2",
 		CreationDate:    time.Now().Add(-15 * time.Hour),
@@ -157,7 +157,7 @@ func TestCataloger_ScanExpired(t *testing.T) {
 		t.Fatal("Failed to commit to slow", err)
 	}
 
-	if err := c.CreateEntry(ctx, repository, "fast", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "fast", Entry{
 		Path:            "0/historical",
 		PhysicalAddress: "/history/2",
 		CreationDate:    time.Now().Add(-15 * time.Hour),
@@ -169,7 +169,7 @@ func TestCataloger_ScanExpired(t *testing.T) {
 	if _, err := c.Commit(ctx, repository, "fast", "first fast commit", "tester", Metadata{}); err != nil {
 		t.Fatal("Failed to commit first fast commit", err)
 	}
-	if err := c.CreateEntry(ctx, repository, "fast", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "fast", Entry{
 		Path:            "0/historical",
 		PhysicalAddress: "/history/3",
 		CreationDate:    time.Now().Add(-5 * time.Hour),
@@ -182,7 +182,7 @@ func TestCataloger_ScanExpired(t *testing.T) {
 		t.Fatal("Failed to commit second fast commit", err)
 	}
 
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "0/historical",
 		PhysicalAddress: "/history/4",
 		CreationDate:    time.Now().Add(-2 * time.Hour),
@@ -398,7 +398,7 @@ func TestCataloger_ScanExpiredWithDupes(t *testing.T) {
 	repository := testCatalogerRepo(t, ctx, c, "repository", "master")
 	testCatalogerBranch(t, ctx, c, repository, "branch", "master")
 
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "0/historical",
 		PhysicalAddress: "/master/one/file",
 		CreationDate:    time.Now().Add(-20 * time.Hour),
@@ -406,7 +406,7 @@ func TestCataloger_ScanExpiredWithDupes(t *testing.T) {
 	}, CreateEntryParams{}); err != nil {
 		t.Fatal("Failed to create 0/historical on master", err)
 	}
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "0/different",
 		PhysicalAddress: "/master/all/different",
 		CreationDate:    time.Now().Add(-19 * time.Hour),
@@ -418,7 +418,7 @@ func TestCataloger_ScanExpiredWithDupes(t *testing.T) {
 		t.Fatal("Failed to commit first commit to master", err)
 	}
 
-	if err := c.CreateEntry(ctx, repository, "branch", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "branch", Entry{
 		Path:            "0/different",
 		PhysicalAddress: "/master/one/file",
 		CreationDate:    time.Now().Add(-5 * time.Hour),
@@ -515,7 +515,7 @@ func TestCataloger_MarkEntriesExpired(t *testing.T) {
 
 	for batch := 0; batch < numBatches; batch++ {
 		for i := 0; i < batchSize; i++ {
-			if err := c.CreateEntry(ctx, repository, "master", Entry{
+			if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 				Path:            fmt.Sprintf("/path/%08d/%08d", i, batch),
 				PhysicalAddress: fmt.Sprintf("/phys/%09d", batch*batchSize+i),
 				Checksum:        fmt.Sprintf("%08x", i),
@@ -632,7 +632,7 @@ func TestCataloger_MarkObjectsForDeletion(t *testing.T) {
 		},
 	}
 	for _, ep := range entryDedups {
-		if err := c.CreateEntry(ctx, repository, "master", ep.entry, ep.params); err != nil {
+		if _, err := c.CreateEntry(ctx, repository, "master", ep.entry, ep.params); err != nil {
 			t.Fatalf("failed to set up entry %v: %s", ep, err)
 		}
 	}
@@ -748,7 +748,7 @@ func TestCataloger_DeleteOrUnmarkObjectsForDeletion(t *testing.T) {
 		},
 	}
 	for _, ep := range entryDedups {
-		if err := c.CreateEntry(ctx, repository, "master", ep.entry, ep.params); err != nil {
+		if _, err := c.CreateEntry(ctx, repository, "master", ep.entry, ep.params); err != nil {
 			t.Fatalf("failed to set up entry %v: %s", ep, err)
 		}
 	}

@@ -109,7 +109,7 @@ func TestCataloger_GetEntry(t *testing.T) {
 
 func setupReadEntryData(t *testing.T, ctx context.Context, c Cataloger) string {
 	repository := testCatalogerRepo(t, ctx, c, "repository", "master")
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "/file1",
 		Checksum:        "ff",
 		PhysicalAddress: "/addr1",
@@ -118,7 +118,7 @@ func setupReadEntryData(t *testing.T, ctx context.Context, c Cataloger) string {
 	}, CreateEntryParams{}); err != nil {
 		t.Fatal("failed to create entry", err)
 	}
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "/file2",
 		Checksum:        "ee",
 		PhysicalAddress: "/addr2",
@@ -130,7 +130,7 @@ func setupReadEntryData(t *testing.T, ctx context.Context, c Cataloger) string {
 	if _, err := c.Commit(ctx, repository, "master", "commit file1 and 2", "tester", nil); err != nil {
 		t.Fatal("failed to commit for get entry:", err)
 	}
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "/file3",
 		Checksum:        "ffff",
 		PhysicalAddress: "/addr3",
@@ -139,7 +139,7 @@ func setupReadEntryData(t *testing.T, ctx context.Context, c Cataloger) string {
 	}, CreateEntryParams{}); err != nil {
 		t.Fatal("failed to create entry", err)
 	}
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "/file4",
 		Checksum:        "eeee",
 		PhysicalAddress: "/addr4",

@@ -817,7 +817,7 @@ func testListEntriesCreateEntries(t *testing.T, ctx context.Context, c Cataloger
 			path := fmt.Sprintf("my_entry%03d", j)
 			seed := strconv.Itoa(i)
 			checksum := testCreateEntryCalcChecksum(path, seed)
-			err := c.CreateEntry(ctx, repo, branch, Entry{Path: path, Checksum: checksum, PhysicalAddress: checksum, Size: int64(i)}, CreateEntryParams{})
+			_, err := c.CreateEntry(ctx, repo, branch, Entry{Path: path, Checksum: checksum, PhysicalAddress: checksum, Size: int64(i)}, CreateEntryParams{})
 			if err != nil {
 				t.Fatalf("Failed to create entry %s on branch %s, repository %s: %s", path, branch, repo, err)
 			}

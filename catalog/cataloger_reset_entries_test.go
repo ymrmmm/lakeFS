@@ -15,7 +15,7 @@ func TestCataloger_ResetEntries_Basics(t *testing.T) {
 
 	const branch = "master"
 	repository := testCatalogerRepo(t, ctx, c, "repository", branch)
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "/file1",
 		Checksum:        "ffff",
 		PhysicalAddress: "/addr1",
@@ -27,7 +27,7 @@ func TestCataloger_ResetEntries_Basics(t *testing.T) {
 	if _, err := c.Commit(ctx, repository, branch, "commit file1", "tester", nil); err != nil {
 		t.Fatal("Commit for reset entry test:", err)
 	}
-	if err := c.CreateEntry(ctx, repository, "master", Entry{
+	if _, err := c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "/file2",
 		Checksum:        "eeee",
 		PhysicalAddress: "/addr2",

@@ -59,7 +59,7 @@ func testCatalogerCreateEntry(t testing.TB, ctx context.Context, c Cataloger, re
 	for i := range checksum {
 		size += int64(checksum[i])
 	}
-	err := c.CreateEntry(ctx, repository, branch, Entry{
+	_, err := c.CreateEntry(ctx, repository, branch, Entry{
 		Path:            path,
 		Checksum:        checksum,
 		PhysicalAddress: checksum,

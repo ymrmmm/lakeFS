@@ -156,7 +156,7 @@ func TestCataloger_CreateEntry(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := c.CreateEntry(ctx, tt.args.repository, tt.args.branch, Entry{
+			_, err := c.CreateEntry(ctx, tt.args.repository, tt.args.branch, Entry{
 				Path:            tt.args.path,
 				Checksum:        tt.args.checksum,
 				PhysicalAddress: tt.args.physicalAddress,
