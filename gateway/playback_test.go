@@ -17,7 +17,6 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/treeverse/lakefs/block"
 	"github.com/treeverse/lakefs/catalog"
-	"github.com/treeverse/lakefs/dedup"
 	"github.com/treeverse/lakefs/gateway"
 	"github.com/treeverse/lakefs/gateway/simulator"
 	"github.com/treeverse/lakefs/logging"
@@ -115,11 +114,8 @@ func getBasicHandler(t *testing.T, authService *simulator.PlayBackMockConf) (htt
 
 	blockAdapter := testutil.NewBlockAdapterByEnv(t, IdTranslator)
 
-	dedupCleaner := dedup.NewCleaner(blockAdapter, cataloger.DedupReportChannel())
 	t.Cleanup(func() {
-		// order is important - close cataloger channel before dedup
 		_ = cataloger.Close()
-		_ = dedupCleaner.Close()
 	})
 
 	ctx := context.Background()
@@ -135,7 +131,6 @@ func getBasicHandler(t *testing.T, authService *simulator.PlayBackMockConf) (htt
 		authService,
 		authService.BareDomain,
 		&mockCollector{},
-		dedupCleaner,
 	)
 
 	return handler, &dependencies{

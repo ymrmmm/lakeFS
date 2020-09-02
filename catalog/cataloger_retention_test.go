@@ -636,16 +636,6 @@ func TestCataloger_MarkObjectsForDeletion(t *testing.T) {
 			t.Fatalf("failed to set up entry %v: %s", ep, err)
 		}
 	}
-	// Expecting one dedup report for each physical address
-	for i := 0; i < 2; i++ {
-		select {
-		case r := <-c.DedupReportChannel():
-			t.Logf("Dedup report for %+v: ID %v NewPhysicalAddress %v", r.Entry, r.DedupID, r.NewPhysicalAddress)
-		case <-time.After(3 * time.Second):
-			t.Fatalf("timeout waiting for dedup report %v", i)
-		}
-	}
-
 	count, err := c.MarkObjectsForDeletion(ctx, repository)
 	t.Logf("%v objects marked for deletion", count)
 	if err != nil {
@@ -752,16 +742,6 @@ func TestCataloger_DeleteOrUnmarkObjectsForDeletion(t *testing.T) {
 			t.Fatalf("failed to set up entry %v: %s", ep, err)
 		}
 	}
-	// Expecting one dedup report for each physical address
-	for i := 0; i < 2; i++ {
-		select {
-		case r := <-c.DedupReportChannel():
-			t.Logf("Dedup report for %+v: ID %v NewPhysicalAddress %v", r.Entry, r.DedupID, r.NewPhysicalAddress)
-		case <-time.After(3 * time.Second):
-			t.Fatalf("timeout waiting for dedup report %v", i)
-		}
-	}
-
 	conn, err := db.ConnectDB(params.Database{Driver: db.DatabaseDriver, ConnectionString: c.DbConnURI})
 	if err != nil {
 		t.Fatalf("failed to connect to DB on %s", c.DbConnURI)

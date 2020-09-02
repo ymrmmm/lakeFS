@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/treeverse/lakefs/testutil"
 )
@@ -17,9 +16,9 @@ func TestCataloger_CreateEntry(t *testing.T) {
 	c := testCataloger(t)
 	// test data
 	repo := testCatalogerRepo(t, ctx, c, "repo", "master")
-	testutil.MustDo(t, "create entry on master for testing",
-		c.CreateEntry(ctx, repo, "master", Entry{Path: "/aaa/bbb/ddd", Checksum: "cc", PhysicalAddress: "xx", Size: 1}, CreateEntryParams{}))
-	_, err := c.CreateBranch(ctx, repo, "b1", "master")
+	_, err := c.CreateEntry(ctx, repo, "master", Entry{Path: "/aaa/bbb/ddd", Checksum: "cc", PhysicalAddress: "xx", Size: 1}, CreateEntryParams{})
+	testutil.MustDo(t, "create entry on master for testing", err)
+	_, err = c.CreateBranch(ctx, repo, "b1", "master")
 	testutil.MustDo(t, "create branch b1 based on master", err)
 
 	type args struct {
@@ -210,8 +209,8 @@ func TestCataloger_CreateEntry_Dedup(t *testing.T) {
 		ID:               "aa",
 		StorageNamespace: "s1",
 	}
-	testutil.MustDo(t, "create first entry",
-		c.CreateEntry(ctx, repo, testBranch, ent1, CreateEntryParams{Dedup: dedup1}))
+	_, err := c.CreateEntry(ctx, repo, testBranch, ent1, CreateEntryParams{Dedup: dedup1})
+	testutil.MustDo(t, "create first entry", err)
 
 	// add second entry with the same dedup id
 	dedup2 := DedupParams{
@@ -223,15 +222,10 @@ func TestCataloger_CreateEntry_Dedup(t *testing.T) {
 		PhysicalAddress: secondAddr,
 		Checksum:        "aa",
 	}
-	testutil.MustDo(t, "create second entry, same content",
-		c.CreateEntry(ctx, repo, testBranch, ent2, CreateEntryParams{Dedup: dedup2}))
-	select {
-	case report := <-c.DedupReportChannel():
-		if report.Entry.Path != "file2" && report.NewPhysicalAddress == "" {
-			t.Fatal("second entry should have new physical address after dedup")
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout waiting for dedup report")
+	addr2, err := c.CreateEntry(ctx, repo, testBranch, ent2, CreateEntryParams{Dedup: dedup2})
+	testutil.MustDo(t, "create second entry, same content", err)
+	if addr2 == ent2.PhysicalAddress {
+		t.Fatal("second entry should have new physical address after dedup")
 	}
 }
 

@@ -27,14 +27,14 @@ func TestCataloger_ListEntries(t *testing.T) {
 		fileChecksum := fmt.Sprintf("%x", sha256.Sum256([]byte(filePath)))
 		fileAddress := fmt.Sprintf("/addr%d", n)
 		fileSize := int64(n) * 10
-		testutil.MustDo(t, "create test entry",
-			c.CreateEntry(ctx, "repo1", "master", Entry{
-				Path:            filePath,
-				Checksum:        fileChecksum,
-				PhysicalAddress: fileAddress,
-				Size:            fileSize,
-				Metadata:        nil,
-			}, CreateEntryParams{}))
+		_, err := c.CreateEntry(ctx, "repo1", "master", Entry{
+			Path:            filePath,
+			Checksum:        fileChecksum,
+			PhysicalAddress: fileAddress,
+			Size:            fileSize,
+			Metadata:        nil,
+		}, CreateEntryParams{})
+		testutil.MustDo(t, "create test entry", err)
 		if i == 2 {
 			_, err := c.Commit(ctx, "repo1", "master", "commit test files", "tester", nil)
 			testutil.MustDo(t, "commit test files", err)
@@ -169,14 +169,14 @@ func TestCataloger_ListEntries_ByLevel(t *testing.T) {
 		fileChecksum := fmt.Sprintf("%x", sha256.Sum256([]byte(filePath)))
 		fileAddress := fmt.Sprintf("/addr%d", n)
 		fileSize := int64(n) * 10
-		testutil.MustDo(t, "create test entry",
-			c.CreateEntry(ctx, repo, "master", Entry{
-				Path:            filePath,
-				Checksum:        fileChecksum,
-				PhysicalAddress: fileAddress,
-				Size:            fileSize,
-				Metadata:        nil,
-			}, CreateEntryParams{}))
+		_, err := c.CreateEntry(ctx, repo, "master", Entry{
+			Path:            filePath,
+			Checksum:        fileChecksum,
+			PhysicalAddress: fileAddress,
+			Size:            fileSize,
+			Metadata:        nil,
+		}, CreateEntryParams{})
+		testutil.MustDo(t, "create test entry", err)
 
 		if i == 3 {
 			_, err := c.Commit(ctx, repo, "master", "commit test files", "tester", nil)

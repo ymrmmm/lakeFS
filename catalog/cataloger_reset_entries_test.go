@@ -112,12 +112,13 @@ func TestCataloger_ResetEntries(t *testing.T) {
 	// create master branch with 3 entries committed
 	repository := testCatalogerRepo(t, ctx, c, "repository", "master")
 	for i := 0; i < 3; i++ {
-		testutil.Must(t, c.CreateEntry(ctx, repository, "master", Entry{
+		_, err := c.CreateEntry(ctx, repository, "master", Entry{
 			Path:            "/file" + strconv.Itoa(i),
 			Checksum:        strings.Repeat("ff", i+1),
 			PhysicalAddress: "/addr" + strconv.Itoa(i),
 			Size:            int64(i) + 1,
-		}, CreateEntryParams{}))
+		}, CreateEntryParams{})
+		testutil.Must(t, err)
 	}
 	if _, err := c.Commit(ctx, repository, "master", "commit changes on master", "tester", nil); err != nil {
 		t.Fatal("Commit for reset entry test:", err)
@@ -127,55 +128,61 @@ func TestCataloger_ResetEntries(t *testing.T) {
 	_, err := c.CreateBranch(ctx, repository, "b1", "master")
 	testutil.MustDo(t, "Create branch b1 for ResetEntries", err)
 	for i := 3; i < 6; i++ {
-		testutil.Must(t, c.CreateEntry(ctx, repository, "b1", Entry{
+		_, err := c.CreateEntry(ctx, repository, "b1", Entry{
 			Path:            "/file" + strconv.Itoa(i),
 			Checksum:        strings.Repeat("ff", i+1),
 			PhysicalAddress: "/addr" + strconv.Itoa(i),
 			Size:            int64(i) + 1,
-		}, CreateEntryParams{}))
+		}, CreateEntryParams{})
+		testutil.Must(t, err)
 	}
 	if _, err := c.Commit(ctx, repository, "b1", "commit changes on b1", "tester", nil); err != nil {
 		t.Fatal("Commit for reset entry test:", err)
 	}
-	testutil.Must(t, c.CreateEntry(ctx, repository, "master", Entry{
+	_, err = c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "/file2",
 		Checksum:        "eeee",
 		PhysicalAddress: "/addr2",
 		Size:            222,
 		Metadata:        nil,
-	}, CreateEntryParams{}))
+	}, CreateEntryParams{})
+	testutil.Must(t, err)
 
 	// update file on both branches
-	testutil.Must(t, c.CreateEntry(ctx, repository, "master", Entry{
+	_, err = c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "/file0",
 		Checksum:        "ee",
 		PhysicalAddress: "/addr0",
 		Size:            11,
 		Metadata:        nil,
-	}, CreateEntryParams{}))
-	testutil.Must(t, c.CreateEntry(ctx, repository, "b1", Entry{
+	}, CreateEntryParams{})
+	testutil.Must(t, err)
+	_, err = c.CreateEntry(ctx, repository, "b1", Entry{
 		Path:            "/file3",
 		Checksum:        "ee",
 		PhysicalAddress: "/addr3",
 		Size:            33,
 		Metadata:        nil,
-	}, CreateEntryParams{}))
+	}, CreateEntryParams{})
+	testutil.Must(t, err)
 
 	// create new file on both branches
-	testutil.Must(t, c.CreateEntry(ctx, repository, "master", Entry{
+	_, err = c.CreateEntry(ctx, repository, "master", Entry{
 		Path:            "/file10",
 		Checksum:        "eeee",
 		PhysicalAddress: "/addr10",
 		Size:            111,
 		Metadata:        nil,
-	}, CreateEntryParams{}))
-	testutil.Must(t, c.CreateEntry(ctx, repository, "b1", Entry{
+	}, CreateEntryParams{})
+	testutil.Must(t, err)
+	_, err = c.CreateEntry(ctx, repository, "b1", Entry{
 		Path:            "/file13",
 		Checksum:        "eeee",
 		PhysicalAddress: "/addr13",
 		Size:            333,
 		Metadata:        nil,
-	}, CreateEntryParams{}))
+	}, CreateEntryParams{})
+	testutil.Must(t, err)
 
 	// delete file on both branches
 	testutil.Must(t, c.DeleteEntry(ctx, repository, "master", "/file1"))

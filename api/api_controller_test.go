@@ -209,10 +209,11 @@ func TestHandler_CommitsGetBranchCommitLogHandler(t *testing.T) {
 		for i := 0; i < commitsLen; i++ {
 			n := strconv.Itoa(i + 1)
 			p := "foo/bar" + n
-			testutil.MustDo(t, "create entry bar"+n, deps.cataloger.CreateEntry(ctx, "repo2", "master",
+			_, err := deps.cataloger.CreateEntry(ctx, "repo2", "master",
 				catalog.Entry{Path: p, PhysicalAddress: "bar" + n + "addr", CreationDate: time.Now(), Size: int64(i) + 1, Checksum: "cksum" + n},
 				catalog.CreateEntryParams{},
-			))
+			)
+			testutil.MustDo(t, "create entry bar"+n, err)
 			if _, err := deps.cataloger.Commit(ctx, "repo2", "master", "commit"+n, "some_user", nil); err != nil {
 				t.Fatalf("failed to commit '%s': %s", p, err)
 			}
@@ -261,10 +262,11 @@ func TestHandler_GetCommitHandler(t *testing.T) {
 		ctx := context.Background()
 		err := deps.cataloger.CreateRepository(ctx, "foo1", "s3://foo1", "master")
 		testutil.Must(t, err)
-		testutil.MustDo(t, "create entry bar1", deps.cataloger.CreateEntry(ctx, "foo1", "master",
+		_, err = deps.cataloger.CreateEntry(ctx, "foo1", "master",
 			catalog.Entry{Path: "foo/bar1", PhysicalAddress: "bar1addr", CreationDate: time.Now(), Size: 1, Checksum: "cksum1"},
 			catalog.CreateEntryParams{},
-		))
+		)
+		testutil.MustDo(t, "create entry bar1", err)
 		commit1, err := deps.cataloger.Commit(ctx, "foo1", "master", "some message", DefaultUserID, nil)
 		testutil.Must(t, err)
 		reference1, err := deps.cataloger.GetBranchReference(ctx, "foo1", "master")
@@ -323,11 +325,12 @@ func TestHandler_CommitHandler(t *testing.T) {
 		ctx := context.Background()
 		testutil.MustDo(t, "create repo foo1",
 			deps.cataloger.CreateRepository(ctx, "foo1", "s3://foo1", "master"))
-		testutil.MustDo(t, "commit bar on foo1", deps.cataloger.CreateEntry(ctx, "foo1", "master",
+		_, err := deps.cataloger.CreateEntry(ctx, "foo1", "master",
 			catalog.Entry{Path: "foo/bar", PhysicalAddress: "pa", CreationDate: time.Now(), Size: 666, Checksum: "cs", Metadata: nil},
 			catalog.CreateEntryParams{},
-		))
-		_, err := clt.Commits.Commit(&commits.CommitParams{
+		)
+		testutil.MustDo(t, "commit bar on foo1", err)
+		_, err = clt.Commits.Commit(&commits.CommitParams{
 			Branch: "master",
 			Commit: &models.CommitCreation{
 				Message:  swag.String("some message"),
@@ -706,15 +709,15 @@ func TestHandler_ObjectsStatObjectHandler(t *testing.T) {
 	}
 
 	t.Run("get object stats", func(t *testing.T) {
-		testutil.Must(t,
-			deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
-				Path:            "foo/bar",
-				PhysicalAddress: "this_is_bars_address",
-				CreationDate:    time.Now(),
-				Size:            666,
-				Checksum:        "this_is_a_checksum",
-				Metadata:        nil,
-			}, catalog.CreateEntryParams{}))
+		_, err := deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
+			Path:            "foo/bar",
+			PhysicalAddress: "this_is_bars_address",
+			CreationDate:    time.Now(),
+			Size:            666,
+			Checksum:        "this_is_a_checksum",
+			Metadata:        nil,
+		}, catalog.CreateEntryParams{})
+		testutil.Must(t, err)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -746,16 +749,16 @@ func TestHandler_ObjectsStatObjectHandler(t *testing.T) {
 	})
 
 	t.Run("get expired object stats", func(t *testing.T) {
-		testutil.Must(t,
-			deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
-				Path:            "foo/expired",
-				PhysicalAddress: "this_address_is_expired",
-				CreationDate:    time.Now(),
-				Size:            999999,
-				Checksum:        "eeee",
-				Metadata:        nil,
-				Expired:         true,
-			}, catalog.CreateEntryParams{}))
+		_, err := deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
+			Path:            "foo/expired",
+			PhysicalAddress: "this_address_is_expired",
+			CreationDate:    time.Now(),
+			Size:            999999,
+			Checksum:        "eeee",
+			Metadata:        nil,
+			Expired:         true,
+		}, catalog.CreateEntryParams{})
+		testutil.Must(t, err)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -791,39 +794,39 @@ func TestHandler_ObjectsListObjectsHandler(t *testing.T) {
 	ctx := context.Background()
 	testutil.Must(t,
 		deps.cataloger.CreateRepository(ctx, "repo1", "ns1", "master"))
-	testutil.Must(t,
-		deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
-			Path:            "foo/bar",
-			PhysicalAddress: "this_is_bars_address",
-			CreationDate:    time.Now(),
-			Size:            666,
-			Checksum:        "this_is_a_checksum",
-		}, catalog.CreateEntryParams{}))
-	testutil.Must(t,
-		deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
-			Path:            "foo/quuux",
-			PhysicalAddress: "this_is_quuxs_address_expired",
-			CreationDate:    time.Now(),
-			Size:            9999999,
-			Checksum:        "quux_checksum",
-			Expired:         true,
-		}, catalog.CreateEntryParams{}))
-	testutil.Must(t,
-		deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
-			Path:            "foo/baz",
-			PhysicalAddress: "this_is_bazs_address",
-			CreationDate:    time.Now(),
-			Size:            666,
-			Checksum:        "baz_checksum",
-		}, catalog.CreateEntryParams{}))
-	testutil.Must(t,
-		deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
-			Path:            "foo/a_dir/baz",
-			PhysicalAddress: "this_is_bazs_address",
-			CreationDate:    time.Now(),
-			Size:            666,
-			Checksum:        "baz_checksum",
-		}, catalog.CreateEntryParams{}))
+	_, err := deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
+		Path:            "foo/bar",
+		PhysicalAddress: "this_is_bars_address",
+		CreationDate:    time.Now(),
+		Size:            666,
+		Checksum:        "this_is_a_checksum",
+	}, catalog.CreateEntryParams{})
+	testutil.Must(t, err)
+	_, err = deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
+		Path:            "foo/quuux",
+		PhysicalAddress: "this_is_quuxs_address_expired",
+		CreationDate:    time.Now(),
+		Size:            9999999,
+		Checksum:        "quux_checksum",
+		Expired:         true,
+	}, catalog.CreateEntryParams{})
+	testutil.Must(t, err)
+	_, err = deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
+		Path:            "foo/baz",
+		PhysicalAddress: "this_is_bazs_address",
+		CreationDate:    time.Now(),
+		Size:            666,
+		Checksum:        "baz_checksum",
+	}, catalog.CreateEntryParams{})
+	testutil.Must(t, err)
+	_, err = deps.cataloger.CreateEntry(ctx, "repo1", "master", catalog.Entry{
+		Path:            "foo/a_dir/baz",
+		PhysicalAddress: "this_is_bazs_address",
+		CreationDate:    time.Now(),
+		Size:            666,
+		Checksum:        "baz_checksum",
+	}, catalog.CreateEntryParams{})
+	testutil.Must(t, err)
 
 	t.Run("get object list", func(t *testing.T) {
 		resp, err := clt.Objects.ListObjects(&objects.ListObjectsParams{
@@ -907,8 +910,8 @@ func TestHandler_ObjectsGetObjectHandler(t *testing.T) {
 		Size:            blob.Size,
 		Checksum:        blob.Checksum,
 	}
-	testutil.Must(t,
-		deps.cataloger.CreateEntry(ctx, "repo1", "master", entry, catalog.CreateEntryParams{}))
+	_, err = deps.cataloger.CreateEntry(ctx, "repo1", "master", entry, catalog.CreateEntryParams{})
+	testutil.Must(t, err)
 
 	expired := catalog.Entry{
 		Path:            "foo/expired",
@@ -918,8 +921,8 @@ func TestHandler_ObjectsGetObjectHandler(t *testing.T) {
 		Checksum:        "b10b",
 		Expired:         true,
 	}
-	testutil.Must(t,
-		deps.cataloger.CreateEntry(ctx, "repo1", "master", expired, catalog.CreateEntryParams{}))
+	_, err = deps.cataloger.CreateEntry(ctx, "repo1", "master", expired, catalog.CreateEntryParams{})
+	testutil.Must(t, err)
 
 	t.Run("get object", func(t *testing.T) {
 		buf := new(bytes.Buffer)

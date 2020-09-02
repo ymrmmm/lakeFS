@@ -8,9 +8,6 @@ import (
 	"testing"
 	"time"
 
-	dbparams "github.com/treeverse/lakefs/db/params"
-	"github.com/treeverse/lakefs/dedup"
-
 	"github.com/ory/dockertest/v3"
 	"github.com/treeverse/lakefs/api"
 	"github.com/treeverse/lakefs/auth"
@@ -20,6 +17,7 @@ import (
 	"github.com/treeverse/lakefs/block"
 	"github.com/treeverse/lakefs/catalog"
 	"github.com/treeverse/lakefs/db"
+	dbparams "github.com/treeverse/lakefs/db/params"
 	"github.com/treeverse/lakefs/logging"
 	"github.com/treeverse/lakefs/retention"
 	"github.com/treeverse/lakefs/testutil"
@@ -62,11 +60,8 @@ func TestLocalLoad(t *testing.T) {
 	retentionService := retention.NewService(conn)
 	meta := auth.NewDBMetadataManager("dev", conn)
 	migrator := db.NewDatabaseMigrator(dbparams.Database{ConnectionString: databaseURI})
-	dedupCleaner := dedup.NewCleaner(blockAdapter, cataloger.DedupReportChannel())
 	t.Cleanup(func() {
-		// order is important - close cataloger channel before dedup
 		_ = cataloger.Close()
-		_ = dedupCleaner.Close()
 	})
 
 	handler := api.NewHandler(
@@ -77,7 +72,6 @@ func TestLocalLoad(t *testing.T) {
 		&mockCollector{},
 		retentionService,
 		migrator,
-		dedupCleaner,
 		logging.Default(),
 	)
 

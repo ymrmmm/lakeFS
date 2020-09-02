@@ -9,9 +9,6 @@ import (
 	"testing"
 	"time"
 
-	dbparams "github.com/treeverse/lakefs/db/params"
-	"github.com/treeverse/lakefs/dedup"
-
 	"github.com/go-openapi/runtime"
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/ory/dockertest/v3"
@@ -25,6 +22,7 @@ import (
 	"github.com/treeverse/lakefs/block"
 	"github.com/treeverse/lakefs/catalog"
 	"github.com/treeverse/lakefs/db"
+	dbparams "github.com/treeverse/lakefs/db/params"
 	"github.com/treeverse/lakefs/logging"
 	"github.com/treeverse/lakefs/retention"
 	"github.com/treeverse/lakefs/testutil"
@@ -88,11 +86,8 @@ func getHandler(t *testing.T, opts ...testutil.GetDBOption) (http.Handler, *depe
 	retentionService := retention.NewService(conn)
 	migrator := db.NewDatabaseMigrator(dbparams.Database{ConnectionString: handlerDatabaseURI})
 
-	dedupCleaner := dedup.NewCleaner(blockAdapter, cataloger.DedupReportChannel())
 	t.Cleanup(func() {
-		// order is important - close cataloger channel before dedup
 		_ = cataloger.Close()
-		_ = dedupCleaner.Close()
 	})
 
 	handler := api.NewHandler(
@@ -103,7 +98,6 @@ func getHandler(t *testing.T, opts ...testutil.GetDBOption) (http.Handler, *depe
 		&mockCollector{},
 		retentionService,
 		migrator,
-		dedupCleaner,
 		logging.Default(),
 	)
 
