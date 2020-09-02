@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/treeverse/lakefs/db"
 )
@@ -17,28 +18,71 @@ func (c *cataloger) CreateEntry(ctx context.Context, repository, branch string, 
 		return err
 	}
 
-	res, err := c.db.Transact(func(tx db.Tx) (interface{}, error) {
+	_, err := c.db.Transact(func(tx db.Tx) (interface{}, error) {
 		branchID, err := c.getBranchIDCache(tx, repository, branch)
 		if err != nil {
 			return nil, err
 		}
-		return insertEntry(tx, branchID, &entry)
+
+		// dedup if needed
+		entryAddress := entry.PhysicalAddress
+		dedupAddress, err := c.createEntryDedup(tx, params, repository, entry.PhysicalAddress)
+		if err != nil {
+			return nil, err
+		}
+		if dedupAddress != "" {
+			// write dedup address to the catalog
+			entryAddress = dedupAddress
+		}
+
+		// insert or update the entry
+		creationDate := entry.CreationDate
+		if creationDate.IsZero() {
+			creationDate = time.Now()
+		}
+
+		_, err = tx.Exec(`INSERT INTO catalog_entries (branch_id,path,physical_address,checksum,size,metadata,creation_date,is_expired)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			ON CONFLICT (branch_id,path,min_commit)
+			DO UPDATE SET physical_address=EXCLUDED.physical_address, checksum=EXCLUDED.checksum, size=EXCLUDED.size, metadata=EXCLUDED.metadata, creation_date=EXCLUDED.creation_date, is_expired=EXCLUDED.is_expired, max_commit=catalog_max_commit_id()`,
+			branchID, entry.Path, entryAddress, entry.Checksum, entry.Size, entry.Metadata, creationDate, entry.Expired)
+		if err != nil {
+			return nil, fmt.Errorf("insert entry: %w", err)
+		}
+		// return the real physical address
+		return dedupAddress, nil
 	}, c.txOpts(ctx)...)
+	// TODO(barak): return new object address
+	return err
+}
+
+func (c *cataloger) createEntryDedup(tx db.Tx, params CreateEntryParams, repository string, physicalAddress string) (string, error) {
+	if params.Dedup.ID == "" {
+		return "", nil
+	}
+	repoID, err := c.getRepositoryIDCache(tx, repository)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// post request to dedup if needed
-	if params.Dedup.ID != "" {
-		c.dedupCh <- &dedupRequest{
-			Repository:       repository,
-			StorageNamespace: params.Dedup.StorageNamespace,
-			DedupID:          params.Dedup.ID,
-			Entry:            &entry,
-			EntryCTID:        res.(string),
-		}
+	res, err := tx.Exec(`INSERT INTO catalog_object_dedup (repository_id, dedup_id, physical_address) values ($1, decode($2,'hex'), $3)
+				ON CONFLICT DO NOTHING`,
+		repoID, params.Dedup.ID, physicalAddress)
+	if err != nil {
+		return "", err
 	}
-	return nil
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return "", err
+	}
+	if rowsAffected == 1 {
+		return "", nil
+	}
+	// get the existing address
+	var address string
+	err = tx.Get(&address, `SELECT physical_address FROM catalog_object_dedup WHERE repository_id=$1 AND dedup_id=decode($2,'hex')`,
+		repoID, params.Dedup.ID)
+	return address, err
 }
 
 func insertEntry(tx db.Tx, branchID int64, entry *Entry) (string, error) {
