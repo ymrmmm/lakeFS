@@ -97,7 +97,8 @@ func sqEntriesLineageV(branchID int64, requestedCommit CommitID, lineage []linea
 	return baseSelect
 }
 
-func sqDiffFromChildV(parentID, childID int64, parentEffectiveCommit, childEffectiveCommit CommitID, parentUncommittedLineage []lineageCommit, childLineageValues string) sq.SelectBuilder {
+func sqDiffFromChildV(parentID, childID int64, parentEffectiveCommit, childEffectiveCommit CommitID,
+	parentUncommittedLineage []lineageCommit, childLineageValues string, limit int, after string) sq.SelectBuilder {
 	lineage := sqEntriesLineage(parentID, UncommittedID, parentUncommittedLineage)
 	sqParent := sq.Select("*").
 		FromSelect(lineage, "z").
@@ -130,7 +131,8 @@ func sqDiffFromChildV(parentID, childID int64, parentEffectiveCommit, childEffec
 		FromSelect(sqEntriesV(CommittedID).Distinct().
 			Options(" on (branch_id,path)").
 			OrderBy("branch_id", "path", "min_commit desc").
-			Where("branch_id = ? AND (min_commit >= ? OR max_commit >= ? and is_deleted)", childID, childEffectiveCommit, childEffectiveCommit), "s").
+			Where("branch_id = ? AND (min_commit >= ? OR max_commit >= ? and is_deleted) and path > ?", childID, childEffectiveCommit, childEffectiveCommit, after).
+			Limit(uint64(limit)), "s").
 		JoinClause(sqParent.Prefix("LEFT JOIN (").Suffix(") AS f ON f.path = s.path"))
 	RemoveNonRelevantQ := sq.Select("*").FromSelect(fromChildInternalQ, "t").Where("NOT (same_object OR both_deleted)")
 	return sq.Select().
@@ -146,14 +148,15 @@ func sqDiffFromChildV(parentID, childID int64, parentEffectiveCommit, childEffec
 		FromSelect(RemoveNonRelevantQ, "t1")
 }
 
-func sqDiffFromParentV(parentID, childID int64, lastChildMergeWithParent CommitID, parentUncommittedLineage, childUncommittedLineage []lineageCommit) sq.SelectBuilder {
+func sqDiffFromParentV(parentID, childID int64, lastChildMergeWithParent CommitID, parentUncommittedLineage,
+	childUncommittedLineage []lineageCommit, limit int, after string) sq.SelectBuilder {
 	childLineageValues := getLineageAsValues(childUncommittedLineage, childID, MaxCommitID)
 	childLineage := sqEntriesLineage(childID, UncommittedID, childUncommittedLineage)
 	sqChild := sq.Select("*").
 		FromSelect(childLineage, "s").
 		Where("displayed_branch = ?", childID)
 
-	parentLineage := sqEntriesLineage(parentID, CommittedID, parentUncommittedLineage)
+	parentLineage := sqEntriesLineage(parentID, CommittedID, parentUncommittedLineage).Where("path > after").Limit(uint64(limit))
 	// Can diff with expired files, just not usefully!
 	internalV := sq.Select("f.path",
 		"f.entry_ctid",

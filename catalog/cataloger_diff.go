@@ -15,7 +15,10 @@ type DiffTypeCount struct {
 	Count    int `db:"count"`
 }
 
-const diffResultsTableName = "catalog_diff_results"
+const (
+	diffResultsTableName = "catalog_diff_results"
+	DiffLimitFactor      = 1.5
+)
 
 func (c *cataloger) Diff(ctx context.Context, repository string, leftBranch string, rightBranch string, limit int, after string) (Differences, bool, error) {
 	if err := Validate(ValidateFields{
@@ -111,7 +114,7 @@ func (c *cataloger) diffFromParent(tx db.Tx, parentID, childID int64, limit int,
 	if err != nil {
 		return fmt.Errorf("get child last commit failed: %w", err)
 	}
-	diffFromParentSQL, args, err := sqDiffFromParentV(parentID, childID, maxChildMerge, parentLineage, childLineage).
+	diffFromParentSQL, args, err := sqDiffFromParentV(parentID, childID, maxChildMerge, parentLineage, childLineage, applyFactorToLimit(limit), after).
 		Prefix(`CREATE TEMP TABLE ` + diffResultsTableName + " ON COMMIT DROP AS ").
 		PlaceholderFormat(sq.Dollar).
 		ToSql()
@@ -185,16 +188,24 @@ func (c *cataloger) diffFromChild(tx db.Tx, childID, parentID int64, limit int, 
 	}
 
 	childLineageValues := getLineageAsValues(childLineage, childID, MaxCommitID)
-	mainDiffFromChild := sqDiffFromChildV(parentID, childID, effectiveCommits.ParentEffectiveCommit, effectiveCommits.ChildEffectiveCommit, parentLineage, childLineageValues)
-	diffFromChildSQL, args, err := mainDiffFromChild.
-		Prefix("CREATE TEMP TABLE " + diffResultsTableName + " ON COMMIT DROP AS").
-		PlaceholderFormat(sq.Dollar).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("diff from child sql: %w", err)
-	}
-	if _, err := tx.Exec(diffFromChildSQL, args...); err != nil {
-		return fmt.Errorf("exec diff from child: %w", err)
+	var comulativeNumber int
+	for comulativeNumber < limit {
+		effectiveLimit := limit - comulativeNumber
+		mainDiffFromChild := sqDiffFromChildV(parentID, childID, effectiveCommits.ParentEffectiveCommit, effectiveCommits.ChildEffectiveCommit,
+			parentLineage, childLineageValues, applyFactorToLimit(effectiveLimit), after)
+		diffFromChildSQL, args, err := mainDiffFromChild.Limit(uint64(effectiveLimit)).
+			Prefix("INSERT INTO " + diffResultsTableName + " ").
+			PlaceholderFormat(sq.Dollar).
+			ToSql()
+		if err != nil {
+			return fmt.Errorf("diff from child sql: %w", err)
+		}
+		r, err := tx.Exec(diffFromChildSQL, args...)
+		if err != nil {
+			return fmt.Errorf("exec diff from child: %w", err)
+		}
+		n, _ := r.RowsAffected()
+		comulativeNumber += int(n)
 	}
 	return nil
 }
@@ -205,4 +216,21 @@ func (c *cataloger) diffNonDirect(_ db.Tx, leftID, rightID int64, limit int, aft
 		"right_id": rightID,
 	}).Debug("Diff not direct - feature not supported")
 	return ErrFeatureNotSupported
+}
+
+func (c *cataloger) createTempTable(tx db.Tx) {
+	sql := "CREATE TEMP TABLE " + diffResultsTableName + ` ON COMMIT DROP (
+		    diff_type integer,
+    		path text,
+    		entry_ctid tid	
+)`
+	_, err := tx.Exec(sql)
+	if err != nil {
+
+	}
+}
+
+func applyFactorToLimit(limit int) int {
+	return int(float32(limit) * DiffLimitFactor)
+
 }
