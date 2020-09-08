@@ -188,14 +188,18 @@ func (c *cataloger) diffFromChild(tx db.Tx, childID, parentID int64, limit int, 
 	}
 
 	childLineageValues := getLineageAsValues(childLineage, childID, MaxCommitID)
+	c.createTempTable(tx)
 	var comulativeNumber int
 	for comulativeNumber < limit {
+
 		effectiveLimit := limit - comulativeNumber
 		mainDiffFromChild := sqDiffFromChildV(parentID, childID, effectiveCommits.ParentEffectiveCommit, effectiveCommits.ChildEffectiveCommit,
 			parentLineage, childLineageValues, applyFactorToLimit(effectiveLimit), after)
-		diffFromChildSQL, args, err := mainDiffFromChild.Limit(uint64(effectiveLimit)).
-			Prefix("INSERT INTO " + diffResultsTableName + " ").
-			PlaceholderFormat(sq.Dollar).
+		diffFromChildExpr := mainDiffFromChild.Limit(uint64(effectiveLimit)).OrderBy("path").
+			Prefix("INSERT INTO " + diffResultsTableName + " (").Suffix(")")
+		s := sq.DebugSqlizer(diffFromChildExpr)
+		_ = s
+		diffFromChildSQL, args, err := diffFromChildExpr.PlaceholderFormat(sq.Dollar).
 			ToSql()
 		if err != nil {
 			return fmt.Errorf("diff from child sql: %w", err)
@@ -206,6 +210,7 @@ func (c *cataloger) diffFromChild(tx db.Tx, childID, parentID int64, limit int, 
 		}
 		n, _ := r.RowsAffected()
 		comulativeNumber += int(n)
+
 	}
 	return nil
 }
@@ -219,14 +224,15 @@ func (c *cataloger) diffNonDirect(_ db.Tx, leftID, rightID int64, limit int, aft
 }
 
 func (c *cataloger) createTempTable(tx db.Tx) {
-	sql := "CREATE TEMP TABLE " + diffResultsTableName + ` ON COMMIT DROP (
+	sql := "CREATE TEMP TABLE " + diffResultsTableName + `  (
 		    diff_type integer,
     		path text,
-    		entry_ctid tid	
-)`
+    		entry_ctid tid,
+			source_branch bigint
+) ON COMMIT DROP `
 	_, err := tx.Exec(sql)
 	if err != nil {
-
+		panic(err)
 	}
 }
 
