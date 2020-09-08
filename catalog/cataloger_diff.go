@@ -135,6 +135,11 @@ func getDiffDifferences(tx db.Tx) (Differences, error) {
 	return result, nil
 }
 
+type DiffResultType struct {
+	Result_rows int
+	Last_path   string
+}
+
 func (c *cataloger) diffFromChild(tx db.Tx, childID, parentID int64, limit int, after string) error {
 	// read last merge commit numbers from commit table
 	// if it is the first child-to-parent commit, than those commit numbers are calculated as follows:
@@ -191,7 +196,6 @@ func (c *cataloger) diffFromChild(tx db.Tx, childID, parentID int64, limit int, 
 	c.createTempTable(tx)
 	var comulativeNumber int
 	for comulativeNumber < limit {
-
 		effectiveLimit := limit - comulativeNumber
 		mainDiffFromChild := sqDiffFromChildV(parentID, childID, effectiveCommits.ParentEffectiveCommit, effectiveCommits.ChildEffectiveCommit,
 			parentLineage, childLineageValues, applyFactorToLimit(effectiveLimit), after)
@@ -209,8 +213,18 @@ func (c *cataloger) diffFromChild(tx db.Tx, childID, parentID int64, limit int, 
 			return fmt.Errorf("exec diff from child: %w", err)
 		}
 		n, _ := r.RowsAffected()
-		comulativeNumber += int(n)
+		if n == 0 {
+			return nil
+		}
+		var diffResult DiffResultType
+		countSql := fmt.Sprintf("select (select count(*) from %s where diff_type != 4) as result_rows, (select max(path) from %s)as last_path", diffResultsTableName, diffResultsTableName)
+		err = tx.Get(&diffResult, countSql)
+		if err != nil {
+			return fmt.Errorf("failed count diff results: %w", err)
+		}
 
+		comulativeNumber = diffResult.Result_rows
+		after = diffResult.Last_path
 	}
 	return nil
 }

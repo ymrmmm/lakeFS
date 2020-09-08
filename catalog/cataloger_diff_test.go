@@ -45,7 +45,7 @@ func TestCataloger_Diff_FromChildThreeBranches(t *testing.T) {
 	testutil.MustDo(t, "second commit to branch2", err)
 
 	// merge the above up to master (from branch2)
-	diff, b, err := c.Diff(ctx, repository, "branch2", "branch1", 20, "")
+	diff, b, err := c.Diff(ctx, repository, "branch2", "branch1", 3, "")
 	_ = diff
 	_ = b
 	testutil.MustDo(t, "Merge changes from branch2 to branch1", err)
