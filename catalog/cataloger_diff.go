@@ -138,6 +138,7 @@ func getDiffDifferences(tx db.Tx) (Differences, error) {
 type DiffResultType struct {
 	Result_rows int
 	Last_path   string
+	Total_rows  int
 }
 
 func (c *cataloger) diffFromChild(tx db.Tx, childID, parentID int64, limit int, after string) error {
@@ -217,7 +218,9 @@ func (c *cataloger) diffFromChild(tx db.Tx, childID, parentID int64, limit int, 
 			return nil
 		}
 		var diffResult DiffResultType
-		countSql := fmt.Sprintf("select (select count(*) from %s where diff_type != 4) as result_rows, (select max(path) from %s)as last_path", diffResultsTableName, diffResultsTableName)
+		countSql := fmt.Sprintf(`select (select count(*) from %s where diff_type != 4) as result_rows, 
+			(select max(path) from %s)as last_path, (select count(*) from %s ) as total_rows`,
+			diffResultsTableName, diffResultsTableName, diffResultsTableName)
 		err = tx.Get(&diffResult, countSql)
 		if err != nil {
 			return fmt.Errorf("failed count diff results: %w", err)
