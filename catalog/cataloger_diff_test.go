@@ -57,15 +57,15 @@ func TestCataloger_Diff_FromChildThreeBranches(t *testing.T) {
 	//	t.Errorf("Merge reference = %s, expected a valid reference", res.Reference)
 	//}
 	//expectedDifferences := Differences{
-	//	Difference{Type: DifferenceTypeChanged, Path: "/file2"},
-	//	Difference{Type: DifferenceTypeAdded, Path: "/file3"},
-	//	Difference{Type: DifferenceTypeAdded, Path: "/file4"},
-	//	Difference{Type: DifferenceTypeAdded, Path: "/file5"},
-	//	Difference{Type: DifferenceTypeAdded, Path: "/file555"},
-	//	Difference{Type: DifferenceTypeAdded, Path: "/file6"},
-	//	Difference{Type: DifferenceTypeAdded, Path: "/file7"},
-	//	Difference{Type: DifferenceTypeAdded, Path: "/file8"},
-	//	Difference{Type: DifferenceTypeRemoved, Path: "/file1"},
+	//	Difference{Type: DifferenceTypeChanged, path: "/file2"},
+	//	Difference{Type: DifferenceTypeAdded, path: "/file3"},
+	//	Difference{Type: DifferenceTypeAdded, path: "/file4"},
+	//	Difference{Type: DifferenceTypeAdded, path: "/file5"},
+	//	Difference{Type: DifferenceTypeAdded, path: "/file555"},
+	//	Difference{Type: DifferenceTypeAdded, path: "/file6"},
+	//	Difference{Type: DifferenceTypeAdded, path: "/file7"},
+	//	Difference{Type: DifferenceTypeAdded, path: "/file8"},
+	//	Difference{Type: DifferenceTypeRemoved, path: "/file1"},
 	//}
 	//if !res.Differences.Equal(expectedDifferences) {
 	//	t.Errorf("Merge differences = %s, expected %s", spew.Sdump(res.Differences), spew.Sdump(expectedDifferences))

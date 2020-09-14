@@ -10,7 +10,7 @@ import (
 	"github.com/treeverse/lakefs/uri"
 )
 
-const fsStatTemplate = `Path: {{.Path | yellow }}
+const fsStatTemplate = `path: {{.path | yellow }}
 Modified Time: {{.Mtime|date}}
 Size: {{ .SizeBytes }} bytes
 Human Size: {{ .SizeBytes|human_bytes }}
@@ -37,7 +37,7 @@ var fsStatCmd = &cobra.Command{
 }
 
 const fsLsTemplate = `{{ range $val := . -}}
-{{ $val.PathType|ljust 6 }}    {{ $val.Mtime|date|ljust 29 }}    {{ $val.SizeBytes|human_bytes|ljust 12 }}    {{ $val.Path|yellow }}
+{{ $val.PathType|ljust 6 }}    {{ $val.Mtime|date|ljust 29 }}    {{ $val.SizeBytes|human_bytes|ljust 12 }}    {{ $val.path|yellow }}
 {{ end -}}
 `
 

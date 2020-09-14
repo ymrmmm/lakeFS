@@ -92,7 +92,7 @@ func TestCataloger_GetEntry(t *testing.T) {
 			}
 			// compare just specific fields
 			if tt.want.Path != got.Path {
-				t.Errorf("GetEntry() got Path = %v, want = %v", got.Path, tt.want.Path)
+				t.Errorf("GetEntry() got path = %v, want = %v", got.Path, tt.want.Path)
 			}
 			if tt.want.PhysicalAddress != got.PhysicalAddress {
 				t.Errorf("GetEntry() got PhysicalAddress = %v, want = %v", got.PhysicalAddress, tt.want.PhysicalAddress)

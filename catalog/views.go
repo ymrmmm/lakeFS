@@ -100,6 +100,8 @@ func sqEntriesLineageV(branchID int64, requestedCommit CommitID, lineage []linea
 func sqDiffFromChildV(parentID, childID int64, parentEffectiveCommit, childEffectiveCommit CommitID,
 	parentUncommittedLineage []lineageCommit, childLineageValues string, limit int, after string) sq.SelectBuilder {
 	lineage := sqEntriesLineage(parentID, UncommittedID, parentUncommittedLineage)
+	x := sq.DebugSqlizer(lineage)
+	_ = x
 	sqParent := sq.Select("*").
 		FromSelect(lineage, "z").
 		Where("displayed_branch = ?", parentID)
