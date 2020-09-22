@@ -10,14 +10,10 @@ import (
 	"github.com/treeverse/lakefs/logging"
 )
 
-type DiffTypeCount struct {
-	DiffType int `db:"diff_type"`
-	Count    int `db:"count"`
-}
-
 const (
+	DiffMaxLimit = 1000
+
 	diffResultsTableName = "catalog_diff_results"
-	DiffLimitFactor      = 1.5
 )
 
 func (c *cataloger) Diff(ctx context.Context, repository string, leftBranch string, rightBranch string, limit int, after string) (Differences, bool, error) {
@@ -28,6 +24,10 @@ func (c *cataloger) Diff(ctx context.Context, repository string, leftBranch stri
 	}); err != nil {
 		return nil, false, err
 	}
+
+	if limit < 0 || limit > DiffMaxLimit {
+		limit = DiffMaxLimit
+	}
 	res, err := c.db.Transact(func(tx db.Tx) (interface{}, error) {
 		leftID, err := c.getBranchIDCache(tx, repository, leftBranch)
 		if err != nil {
@@ -37,11 +37,11 @@ func (c *cataloger) Diff(ctx context.Context, repository string, leftBranch stri
 		if err != nil {
 			return nil, fmt.Errorf("right branch: %w", err)
 		}
-		err = c.doDiff(tx, leftID, rightID, limit+1, after)
+		err = c.doDiff(tx, leftID, rightID)
 		if err != nil {
 			return nil, err
 		}
-		return getDiffDifferences(tx)
+		return getDiffDifferences(tx, limit+1, after)
 	}, c.txOpts(ctx)...)
 	if err != nil {
 		return nil, false, err
@@ -51,22 +51,22 @@ func (c *cataloger) Diff(ctx context.Context, repository string, leftBranch stri
 	return differences, hasMore, nil
 }
 
-func (c *cataloger) doDiff(tx db.Tx, leftID, rightID int64, limit int, after string) error {
+func (c *cataloger) doDiff(tx db.Tx, leftID, rightID int64) error {
 	relation, err := getBranchesRelationType(tx, leftID, rightID)
 	if err != nil {
 		return err
 	}
-	return c.doDiffByRelation(tx, relation, leftID, rightID, limit, after)
+	return c.doDiffByRelation(tx, relation, leftID, rightID)
 }
 
-func (c *cataloger) doDiffByRelation(tx db.Tx, relation RelationType, leftID, rightID int64, limit int, after string) error {
+func (c *cataloger) doDiffByRelation(tx db.Tx, relation RelationType, leftID, rightID int64) error {
 	switch relation {
 	case RelationTypeFromParent:
-		return c.diffFromParent(tx, leftID, rightID, limit, after)
+		return c.diffFromParent(tx, leftID, rightID)
 	case RelationTypeFromChild:
-		return c.diffFromChild(tx, leftID, rightID, limit, after)
+		return c.diffFromChild(tx, leftID, rightID)
 	case RelationTypeNotDirect:
-		return c.diffNonDirect(tx, leftID, rightID, limit, after)
+		return c.diffNonDirect(tx, leftID, rightID)
 	default:
 		c.log.WithFields(logging.Fields{
 			"relation_type": relation,
@@ -77,8 +77,11 @@ func (c *cataloger) doDiffByRelation(tx db.Tx, relation RelationType, leftID, ri
 	}
 }
 
-func (c *cataloger) getDiffInformation(tx db.Tx) (map[DifferenceType]int, error) {
-	var results []DiffTypeCount
+func (c *cataloger) getDiffSummary(tx db.Tx) (map[DifferenceType]int, error) {
+	var results []struct {
+		DiffType int `db:"diff_type"`
+		Count    int `db:"count"`
+	}
 	err := tx.Select(&results, "SELECT diff_type, count(diff_type) as count FROM "+diffResultsTableName+" GROUP BY diff_type")
 	if err != nil {
 		return nil, fmt.Errorf("count diff resutls by type: %w", err)
@@ -90,7 +93,7 @@ func (c *cataloger) getDiffInformation(tx db.Tx) (map[DifferenceType]int, error)
 	return m, nil
 }
 
-func (c *cataloger) diffFromParent(tx db.Tx, parentID, childID int64, limit int, after string) error {
+func (c *cataloger) diffFromParent(tx db.Tx, parentID, childID int64) error {
 	// get the last child commit number of the last parent merge
 	// if there is none - then it is  the first merge
 	var maxChildMerge CommitID
@@ -114,7 +117,7 @@ func (c *cataloger) diffFromParent(tx db.Tx, parentID, childID int64, limit int,
 	if err != nil {
 		return fmt.Errorf("get child last commit failed: %w", err)
 	}
-	diffFromParentSQL, args, err := sqDiffFromParentV(parentID, childID, maxChildMerge, parentLineage, childLineage, applyFactorToLimit(limit), after).
+	diffFromParentSQL, args, err := sqDiffFromParentV(parentID, childID, maxChildMerge, parentLineage, childLineage).
 		Prefix(`CREATE TEMP TABLE ` + diffResultsTableName + " ON COMMIT DROP AS ").
 		PlaceholderFormat(sq.Dollar).
 		ToSql()
@@ -127,21 +130,25 @@ func (c *cataloger) diffFromParent(tx db.Tx, parentID, childID int64, limit int,
 	return nil
 }
 
-func getDiffDifferences(tx db.Tx) (Differences, error) {
+func getDiffDifferences(tx db.Tx, limit int, after string) (Differences, error) {
 	var result Differences
-	if err := tx.Select(&result, "SELECT diff_type, path FROM "+diffResultsTableName); err != nil {
+	query, args, err := psql.Select("diff_type", "path").
+		From(diffResultsTableName).
+		Where(sq.Gt{"path": after}).
+		OrderBy("path").
+		Limit(uint64(limit)).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("format diff results query: %w", err)
+	}
+	err = tx.Select(&result, query, args...)
+	if err != nil {
 		return nil, fmt.Errorf("select diff results: %w", err)
 	}
 	return result, nil
 }
 
-type DiffResultType struct {
-	Result_rows int
-	Last_path   string
-	Total_rows  int
-}
-
-func (c *cataloger) diffFromChild(tx db.Tx, childID, parentID int64, limit int, after string) error {
+func (c *cataloger) diffFromChild(tx db.Tx, childID, parentID int64) error {
 	// read last merge commit numbers from commit table
 	// if it is the first child-to-parent commit, than those commit numbers are calculated as follows:
 	// the child is 0, as any change in the child was never merged to the parent.
@@ -194,66 +201,24 @@ func (c *cataloger) diffFromChild(tx db.Tx, childID, parentID int64, limit int, 
 	}
 
 	childLineageValues := getLineageAsValues(childLineage, childID, MaxCommitID)
-	c.createTempTable(tx)
-	var comulativeNumber int
-	for comulativeNumber < limit {
-		effectiveLimit := limit - comulativeNumber
-		mainDiffFromChild := sqDiffFromChildV(parentID, childID, effectiveCommits.ParentEffectiveCommit, effectiveCommits.ChildEffectiveCommit,
-			parentLineage, childLineageValues, applyFactorToLimit(effectiveLimit), after)
-		diffFromChildExpr := mainDiffFromChild.Limit(uint64(effectiveLimit)).OrderBy("path").
-			Prefix("INSERT INTO " + diffResultsTableName + " (").Suffix(")")
-		s := sq.DebugSqlizer(diffFromChildExpr)
-		_ = s
-		diffFromChildSQL, args, err := diffFromChildExpr.PlaceholderFormat(sq.Dollar).
-			ToSql()
-		if err != nil {
-			return fmt.Errorf("diff from child sql: %w", err)
-		}
-		r, err := tx.Exec(diffFromChildSQL, args...)
-		if err != nil {
-			return fmt.Errorf("exec diff from child: %w", err)
-		}
-		n, _ := r.RowsAffected()
-		if n == 0 {
-			return nil
-		}
-		var diffResult DiffResultType
-		countSql := fmt.Sprintf(`select (select count(*) from %s where diff_type != 4) as result_rows, 
-			(select max(path) from %s)as last_path, (select count(*) from %s ) as total_rows`,
-			diffResultsTableName, diffResultsTableName, diffResultsTableName)
-		err = tx.Get(&diffResult, countSql)
-		if err != nil {
-			return fmt.Errorf("failed count diff results: %w", err)
-		}
-
-		comulativeNumber = diffResult.Result_rows
-		after = diffResult.Last_path
+	mainDiffFromChild := sqDiffFromChildV(parentID, childID, effectiveCommits.ParentEffectiveCommit, effectiveCommits.ChildEffectiveCommit, parentLineage, childLineageValues)
+	diffFromChildSQL, args, err := mainDiffFromChild.
+		Prefix("CREATE TEMP TABLE " + diffResultsTableName + " ON COMMIT DROP AS").
+		PlaceholderFormat(sq.Dollar).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("diff from child sql: %w", err)
+	}
+	if _, err := tx.Exec(diffFromChildSQL, args...); err != nil {
+		return fmt.Errorf("exec diff from child: %w", err)
 	}
 	return nil
 }
 
-func (c *cataloger) diffNonDirect(_ db.Tx, leftID, rightID int64, limit int, after string) error {
+func (c *cataloger) diffNonDirect(_ db.Tx, leftID, rightID int64) error {
 	c.log.WithFields(logging.Fields{
 		"left_id":  leftID,
 		"right_id": rightID,
 	}).Debug("Diff not direct - feature not supported")
 	return ErrFeatureNotSupported
-}
-
-func (c *cataloger) createTempTable(tx db.Tx) {
-	sql := "CREATE TEMP TABLE " + diffResultsTableName + `  (
-		    diff_type integer,
-    		path text,
-    		entry_ctid tid,
-			source_branch bigint
-) ON COMMIT DROP `
-	_, err := tx.Exec(sql)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func applyFactorToLimit(limit int) int {
-	return int(float32(limit) * DiffLimitFactor)
-
 }

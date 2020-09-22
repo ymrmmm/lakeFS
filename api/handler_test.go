@@ -60,8 +60,8 @@ type dependencies struct {
 
 func createDefaultAdminUser(authService auth.Service, t *testing.T) *authmodel.Credential {
 	user := &authmodel.User{
-		CreatedAt:   time.Now(),
-		DisplayName: "admin",
+		CreatedAt: time.Now(),
+		Username:  "admin",
 	}
 
 	creds, err := auth.SetupAdminUser(authService, user)
@@ -70,8 +70,6 @@ func createDefaultAdminUser(authService auth.Service, t *testing.T) *authmodel.C
 }
 
 type mockCollector struct{}
-
-func (m *mockCollector) SetInstallationID(_ string) {}
 
 func (m *mockCollector) CollectMetadata(_ map[string]string) {}
 

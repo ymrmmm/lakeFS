@@ -11,22 +11,23 @@ import (
 	"github.com/treeverse/lakefs/logging"
 )
 
-func (c *cataloger) Merge(ctx context.Context, repository, sourceBranch, destinationBranch, committer, message string, metadata Metadata) (string, error) {
+func (c *cataloger) Merge(ctx context.Context, repository, leftBranch, rightBranch, committer, message string, metadata Metadata) (*MergeResult, error) {
 	if err := Validate(ValidateFields{
 		{Name: "repository", IsValid: ValidateRepositoryName(repository)},
-		{Name: "sourceBranch", IsValid: ValidateBranchName(sourceBranch)},
-		{Name: "destinationBranch", IsValid: ValidateBranchName(destinationBranch)},
+		{Name: "leftBranch", IsValid: ValidateBranchName(leftBranch)},
+		{Name: "rightBranch", IsValid: ValidateBranchName(rightBranch)},
 		{Name: "committer", IsValid: ValidateCommitter(committer)},
 	}); err != nil {
-		return "", err
+		return nil, err
 	}
 
-	res, err := c.db.Transact(func(tx db.Tx) (interface{}, error) {
-		leftID, err := getBranchID(tx, repository, sourceBranch, LockTypeUpdate)
+	mergeResult := &MergeResult{}
+	_, err := c.db.Transact(func(tx db.Tx) (interface{}, error) {
+		leftID, err := getBranchID(tx, repository, leftBranch, LockTypeUpdate)
 		if err != nil {
 			return nil, fmt.Errorf("left branch: %w", err)
 		}
-		rightID, err := getBranchID(tx, repository, destinationBranch, LockTypeUpdate)
+		rightID, err := getBranchID(tx, repository, rightBranch, LockTypeUpdate)
 		if err != nil {
 			return nil, fmt.Errorf("right branch: %w", err)
 		}
@@ -35,69 +36,66 @@ func (c *cataloger) Merge(ctx context.Context, repository, sourceBranch, destina
 			return nil, fmt.Errorf("branch relation: %w", err)
 		}
 
-		err = c.doDiffByRelation(tx, relation, leftID, rightID, 0, "")
+		err = c.doDiffByRelation(tx, relation, leftID, rightID)
 		if err != nil {
 			return nil, err
 		}
-		info, err := c.getDiffInformation(tx)
+		mergeResult.Summary, err = c.getDiffSummary(tx)
 		if err != nil {
 			return nil, err
 		}
 		// check for conflicts
-		if info[DifferenceTypeConflict] > 0 {
+		if mergeResult.Summary[DifferenceTypeConflict] > 0 {
 			return nil, ErrConflictFound
 		}
 		// check for changes
 		var total int
-		for _, c := range info {
+		for _, c := range mergeResult.Summary {
 			total += c
 		}
 		if total == 0 {
-			leftCommitAdvanced, err := checkZeroDiffCommit(tx, leftID, rightID)
+			commitDifferences, err := hasCommitDifferences(tx, leftID, rightID)
 			if err != nil {
 				return nil, err
 			}
-			if !leftCommitAdvanced {
+			if !commitDifferences {
 				return nil, ErrNoDifferenceWasFound
 			}
 		}
 
 		if message == "" {
-			message = formatMergeMessage(sourceBranch, destinationBranch)
+			message = formatMergeMessage(leftBranch, rightBranch)
 		}
-		return c.doMergeByRelation(tx, relation, leftID, rightID, committer, message, metadata)
+		commitID, err := c.doMergeByRelation(tx, relation, leftID, rightID, committer, message, metadata)
+		if err != nil {
+			return nil, err
+		}
+		mergeResult.Reference = MakeReference(rightBranch, commitID)
+		return nil, nil
 	}, c.txOpts(ctx)...)
-	if err != nil {
-		return "", err
-	}
-	mergeCommitID := res.(CommitID)
-	reference := MakeReference(destinationBranch, mergeCommitID)
-	return reference, nil
+	return mergeResult, err
 }
 
-// checkZeroDiffCommit - Checks if the current commit id of source branch advanced since last merge.
-//		If so - a merge record must be created, even if there are no changes between branches.
-func checkZeroDiffCommit(tx db.Tx, leftID, rightID int64) (bool, error) {
-	leftMaxCommitID, err := getLastCommitIDByBranchID(tx, leftID)
-	if err != nil {
-		return false, fmt.Errorf("left branch id: %w", err)
+// hasCommitDifferences - Checks if the current commit id of target or source branch advanced since last merge
+func hasCommitDifferences(tx db.Tx, leftID, rightID int64) (bool, error) {
+	var hasCommitDifferences bool
+	mergeCommitsQuery := `select right_merge_commit < max_right_commit or left_merge_commit < max_left_commit from
+		(select distinct on (branch_id) commit_id as right_merge_commit, merge_source_commit as left_merge_commit,
+		(select max(commit_id) from catalog_commits where branch_id=$1)as max_right_commit,
+		(select max(commit_id) from catalog_commits where branch_id=$2)as max_left_commit
+		from catalog_commits where branch_id = $1 and merge_source_branch = $2
+		order by branch_id,commit_id desc) t`
+	err := tx.Get(&hasCommitDifferences, mergeCommitsQuery, rightID, leftID)
+	if errors.Is(err, db.ErrNotFound) {
+		// not found errors indicate there is no  merge record for this relation
+		//  a parent to child merge record is written when the branch is created,
+		// so this may happen only in child to parent merge.
+		// in this case - a merge record has to be created, and true is returned
+		return true, nil
+	} else if err != nil {
+		return false, fmt.Errorf(" check zero diff commit : %w", err)
 	}
-	var mergeMaxCommitID CommitID
-	err = tx.Get(&mergeMaxCommitID, `SELECT DISTINCT on (branch_id) merge_source_commit 
-		FROM catalog_commits
-		WHERE branch_id = $1 AND merge_source_branch = $2
-		ORDER BY branch_id, commit_id DESC`,
-		rightID, leftID)
-	if err != nil && !errors.Is(err, db.ErrNotFound) {
-		return false, fmt.Errorf("max source commit id: %w", err)
-	}
-	if errors.Is(err, db.ErrNotFound) { // can happen only in from child merge, on the first merge
-		err = tx.Get(&mergeMaxCommitID, `SELECT MIN(commit_id) FROM catalog_commits WHERE branch_id = $1`, leftID)
-		if err != nil {
-			return false, fmt.Errorf("min commit from left branch: %w", err)
-		}
-	}
-	return leftMaxCommitID > mergeMaxCommitID, nil
+	return hasCommitDifferences, nil
 }
 
 func formatMergeMessage(leftBranch string, rightBranch string) string {
@@ -143,8 +141,10 @@ func (c *cataloger) mergeFromParent(tx db.Tx, previousMaxCommitID, nextCommitID 
 	_, err = tx.Exec(`INSERT INTO catalog_entries (branch_id,path,physical_address,creation_date,size,checksum,metadata,min_commit)
 				SELECT $1,path,physical_address,creation_date,size,checksum,metadata,$2 AS min_commit
 				FROM catalog_entries e
-				WHERE e.ctid IN (SELECT entry_ctid FROM `+diffResultsTableName+` WHERE diff_type=$3)`,
-		childID, nextCommitID, DifferenceTypeChanged)
+				WHERE e.ctid IN (SELECT d.entry_ctid FROM `+diffResultsTableName+` d WHERE d.diff_type=$3 
+ 				-- the or condition - diff will see an entry as new if it is deleted in child. but merge still need to copy it
+				OR d.diff_type=$4 and d.path in (SELECT e1.path FROM catalog_entries e1 WHERE e1.branch_id=$1 and e1.max_commit != catalog_max_commit_id()))`,
+		childID, nextCommitID, DifferenceTypeChanged, DifferenceTypeAdded)
 	if err != nil {
 		return err
 	}
@@ -167,8 +167,8 @@ func (c *cataloger) mergeFromParent(tx db.Tx, previousMaxCommitID, nextCommitID 
 
 	_, err = tx.Exec(`INSERT INTO catalog_commits (branch_id, commit_id, previous_commit_id,committer, message, creation_date, metadata, merge_type, merge_source_branch, merge_source_commit,
                      lineage_commits)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,'from_parent',$8,$9,string_to_array($10,',')::bigint[])`,
-		childID, nextCommitID, previousMaxCommitID, committer, msg, c.clock.Now(), metadata, parentID, parentLastCommitID, childNewLineage)
+		VALUES ($1,$2,$3,$4,$5,transaction_timestamp(),$6,'from_parent',$7,$8,string_to_array($9,',')::bigint[])`,
+		childID, nextCommitID, previousMaxCommitID, committer, msg, metadata, parentID, parentLastCommitID, childNewLineage)
 	if err != nil {
 		return err
 	}
@@ -208,8 +208,8 @@ func (c *cataloger) mergeFromChild(tx db.Tx, previousMaxCommitID, nextCommitID C
 		return err
 	}
 	_, err = tx.Exec(`INSERT INTO catalog_commits (branch_id,commit_id,previous_commit_id,committer,message,creation_date,metadata,merge_type,merge_source_branch,merge_source_commit)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,'from_child',$8,$9)`,
-		parentID, nextCommitID, previousMaxCommitID, committer, msg, c.clock.Now(), metadata, childID, childLastCommitID)
+		VALUES ($1,$2,$3,$4,$5,transaction_timestamp(),$6,'from_child',$7,$8)`,
+		parentID, nextCommitID, previousMaxCommitID, committer, msg, metadata, childID, childLastCommitID)
 	return err
 }
 

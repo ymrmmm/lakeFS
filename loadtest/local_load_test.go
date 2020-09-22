@@ -45,8 +45,6 @@ func TestMain(m *testing.M) {
 
 type mockCollector struct{}
 
-func (m *mockCollector) SetInstallationID(_ string) {}
-
 func (m *mockCollector) CollectMetadata(_ map[string]string) {}
 
 func (m *mockCollector) CollectEvent(_, _ string) {}
@@ -85,8 +83,8 @@ func TestLocalLoad(t *testing.T) {
 	defer ts.Close()
 
 	user := &authmodel.User{
-		CreatedAt:   time.Now(),
-		DisplayName: "admin",
+		CreatedAt: time.Now(),
+		Username:  "admin",
 	}
 	credentials, err := auth.SetupAdminUser(authService, user)
 	testutil.Must(t, err)
