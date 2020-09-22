@@ -98,7 +98,7 @@ func sqEntriesLineageV(branchID int64, requestedCommit CommitID, lineage []linea
 }
 
 func sqDiffFromChildV(parentID, childID int64, parentEffectiveCommit, childEffectiveCommit CommitID,
-	parentUncommittedLineage []lineageCommit, childLineageValues string, limit int, after string) sq.SelectBuilder {
+	parentUncommittedLineage []lineageCommit, childLineageValues string) sq.SelectBuilder {
 	lineage := sqEntriesLineage(parentID, UncommittedID, parentUncommittedLineage)
 	x := sq.DebugSqlizer(lineage)
 	_ = x
@@ -109,10 +109,7 @@ func sqDiffFromChildV(parentID, childID int64, parentEffectiveCommit, childEffec
 	childSelect := sqEntriesV(CommittedID).Distinct().
 		Options(" on (branch_id,path)").
 		OrderBy("branch_id", "path", "min_commit desc").
-		Where("branch_id = ? AND (min_commit >= ? OR max_commit >= ? and is_deleted)", childID, childEffectiveCommit, childEffectiveCommit, after)
-	if limit > 0 {
-		childSelect = childSelect.Limit(uint64(limit)).Where("path > ?")
-	}
+		Where("branch_id = ? AND (min_commit >= ? OR max_commit >= ? and is_deleted)", childID, childEffectiveCommit, childEffectiveCommit)
 	fromChildInternalQ := sq.Select("s.path",
 		"s.is_deleted AS DifferenceTypeRemoved",
 		"f.path IS NOT NULL AND NOT f.is_deleted AS DifferenceTypeChanged",
@@ -155,14 +152,14 @@ func sqDiffFromChildV(parentID, childID int64, parentEffectiveCommit, childEffec
 }
 
 func sqDiffFromParentV(parentID, childID int64, lastChildMergeWithParent CommitID, parentUncommittedLineage,
-	childUncommittedLineage []lineageCommit, limit int, after string) sq.SelectBuilder {
+	childUncommittedLineage []lineageCommit) sq.SelectBuilder {
 	childLineageValues := getLineageAsValues(childUncommittedLineage, childID, MaxCommitID)
 	childLineage := sqEntriesLineage(childID, UncommittedID, childUncommittedLineage)
 	sqChild := sq.Select("*").
 		FromSelect(childLineage, "s").
 		Where("displayed_branch = ?", childID)
 
-	parentLineage := sqEntriesLineage(parentID, CommittedID, parentUncommittedLineage).Where("path > after").Limit(uint64(limit))
+	parentLineage := sqEntriesLineage(parentID, CommittedID, parentUncommittedLineage)
 	// Can diff with expired files, just not usefully!
 	internalV := sq.Select("f.path",
 		"f.entry_ctid",
