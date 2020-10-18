@@ -22,3 +22,12 @@ window.onload = function() {
 
     window.ui = ui
 }
+
+function iframeLoaded() {
+    var swagger_ui_frame = document.getElementById('swagger-ui-frame');
+    if(swagger_ui_frame) {
+    // here you can make the height, I delete it first, then I make it again
+    swagger_ui_frame.height = "";
+    swagger_ui_frame.height = swagger_ui_frame.contentWindow.document.body.scrollHeight + "px";
+    }   
+}
